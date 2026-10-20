@@ -323,7 +323,9 @@ export function appointmentView(appt: AppointmentDoc, patient: PatientDoc | null
           fullName: patient.fullName,
           relationship: patient.relationship,
           birthYear: patient.birthYear ?? (patient.dob ? patient.dob.getUTCFullYear() : null),
-          phone: forUser ? undefined : patient.phone,
+          phone: patient.phone,
+          dob: patient.dob ? patient.dob.toISOString().slice(0, 10) : null,
+          address: patient.address ?? null,
           isLocked: patient.isLocked,
         }
       : null,
