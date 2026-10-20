@@ -249,10 +249,26 @@ async function slotMap(date: string, checkins: CheckinDoc[], apptMap: Map<string
   });
 }
 
+/** Thứ tự trong hàng chờ của từng phiếu khám đang chờ (khoá là appointmentId, bắt đầu từ 1). */
+export async function waitingOrder(date = todayVN()) {
+  const list = await waitingList(date);
+  return new Map(list.map((c, i) => [c.appointmentId.toString(), i + 1]));
+}
+
+/** Hàng đợi thu gọn: số người trong phòng, số người chờ và 5 người kế tiếp. */
 export async function miniQueue(date = todayVN()) {
-  const [inRoom, waiting] = await Promise.all([
-    Checkin.countDocuments({ visitDate: date, status: 'IN_ROOM' }),
-    Checkin.countDocuments({ visitDate: date, status: 'WAITING' }),
-  ]);
-  return { date, inRoom, waiting, capacity: seats };
+  const [inRoom, waiting] = await Promise.all([Checkin.countDocuments({ visitDate: date, status: 'IN_ROOM' }), waitingList(date)]);
+  const head = waiting.slice(0, seats);
+  const pMap = await patientsMap(head.map((c) => c.patientId));
+  return {
+    date,
+    inRoom,
+    waiting: waiting.length,
+    capacity: seats,
+    next: head.map((c) => ({
+      id: c._id.toString(),
+      fullName: pMap.get(c.patientId.toString())?.fullName ?? '',
+      priority: c.priorityGroup === 'PRIORITY',
+    })),
+  };
 }

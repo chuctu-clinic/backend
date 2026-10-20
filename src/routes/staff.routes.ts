@@ -152,7 +152,7 @@ router.get(
   ah(async (req, res) => {
     const { page, limit, skip } = paging(req.query);
     const { items, total } = await patients.searchPatients({ q: str(req.query.q), locked: str(req.query.locked), skip, limit });
-    res.json({ items: items.map((p) => p.toPublic()), total, page, limit });
+    res.json({ items, total, page, limit });
   }),
 );
 

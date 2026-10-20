@@ -127,10 +127,17 @@ export async function searchPatients({ q, locked, skip, limit }: { q?: string; l
   }
   if (locked === 'true') filter.isLocked = true;
   if (locked === 'false') filter.isLocked = false;
-  const [items, total] = await Promise.all([
+  const [patients, total] = await Promise.all([
     Patient.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
     Patient.countDocuments(filter),
   ]);
+  // Lần khám gần nhất của từng hồ sơ trong trang
+  const last = await MedicalRecord.aggregate<{ _id: Types.ObjectId; lastVisit: Date }>([
+    { $match: { patientId: { $in: patients.map((p) => p._id) } } },
+    { $group: { _id: '$patientId', lastVisit: { $max: '$visitDate' } } },
+  ]);
+  const lastMap = new Map(last.map((l) => [l._id.toString(), l.lastVisit]));
+  const items = patients.map((p) => ({ ...p.toPublic(), lastVisit: lastMap.get(p._id.toString()) ?? null }));
   return { items, total };
 }
 

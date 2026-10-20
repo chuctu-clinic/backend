@@ -17,6 +17,7 @@ import {
 } from '../models/index.ts';
 import { badRequest, conflict, forbidden, mongoErrorCode, notFound } from '../utils/errors.ts';
 import { escapeRegex } from '../utils/validate.ts';
+import { waitingOrder } from './queue.service.ts';
 import {
   ddmm,
   diffDays,
@@ -382,7 +383,23 @@ export async function listDay({ date, status, q }: { date: string; status?: stri
     filter.$or = [{ ticketCode: rx }, { patientId: { $in: patients.map((p) => p._id) } }];
   }
   const appts = await Appointment.find(filter).sort({ slotStart: 1, createdAt: 1 });
-  const items = await withPatients(appts);
+  const [views, checkins, order] = await Promise.all([
+    withPatients(appts),
+    Checkin.find({ appointmentId: { $in: appts.map((a) => a._id) }, status: { $in: ['WAITING', 'IN_ROOM', 'COMPLETED'] } }).lean(),
+    waitingOrder(date),
+  ]);
+  // Giờ check-in, giờ vào khám và thứ tự trong hàng chờ để tiếp tân thấy ngay trên lịch
+  const cMap = new Map(checkins.map((c) => [c.appointmentId.toString(), c]));
+  const items = views.map((v) => {
+    const c = cMap.get(v.id);
+    return {
+      ...v,
+      checkInTime: c?.checkInTime ?? null,
+      enteredAt: c?.enteredAt ?? null,
+      priorityGroup: c?.priorityGroup ?? null,
+      queueNo: order.get(v.id) ?? null,
+    };
+  });
 
   const counts = await Appointment.aggregate<{ _id: AppointmentStatus; n: number }>([
     { $match: { slotDate: slotDateValue(date) } },

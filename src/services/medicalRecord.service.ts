@@ -3,6 +3,7 @@ import {
   Appointment,
   Checkin,
   MedicalRecord,
+  User,
   Patient,
   SERVICE_TYPES,
   TREATMENT_KEYS,
@@ -31,8 +32,14 @@ export interface RecordInput {
   doctorName?: string | null;
 }
 
-export function recordView(r: MedicalRecordDoc, appt: AppointmentDoc | null | undefined, patient: PatientDoc | null | undefined) {
+export function recordView(
+  r: MedicalRecordDoc,
+  appt: AppointmentDoc | null | undefined,
+  patient: PatientDoc | null | undefined,
+  recordedByName: string | null = null,
+) {
   return {
+    recordedByName,
     id: r._id.toString(),
     appointmentId: r.appointmentId.toString(),
     patientId: r.patientId.toString(),
@@ -86,7 +93,7 @@ export async function createRecord(staff: UserDoc, appointmentId: string, data: 
   });
   await Appointment.updateOne({ _id: appt._id }, { $set: { status: 'COMPLETED' } });
   if (checkin) await completeCheckin(checkin._id);
-  return recordView(record, appt, patient);
+  return recordView(record, appt, patient, await recorderName(record));
 }
 
 /** Sửa phiếu kết quả; ghi lại người sửa, thời điểm và nội dung thay đổi (UC.9.9). */
@@ -125,15 +132,26 @@ export async function updateRecord(staff: UserDoc, recordId: string, data: Recor
     await record.save();
   }
   const appt = await Appointment.findById(record.appointmentId);
-  return recordView(record, appt, patient);
+  return recordView(record, appt, patient, await recorderName(record));
+}
+
+/** Tên người đã lập phiếu kết quả. */
+async function recorderName(record: MedicalRecordDoc) {
+  return (await User.findById(record.recordedBy).select('fullName').lean())?.fullName ?? null;
 }
 
 async function viewsFor(records: MedicalRecordDoc[]) {
-  const appts = await Appointment.find({ _id: { $in: records.map((r) => r.appointmentId) } });
-  const patients = await Patient.find({ _id: { $in: records.map((r) => r.patientId) } });
+  const [appts, patients, users] = await Promise.all([
+    Appointment.find({ _id: { $in: records.map((r) => r.appointmentId) } }),
+    Patient.find({ _id: { $in: records.map((r) => r.patientId) } }),
+    User.find({ _id: { $in: records.map((r) => r.recordedBy) } }).select('fullName').lean(),
+  ]);
   const aMap = new Map(appts.map((a) => [a._id.toString(), a]));
   const pMap = new Map(patients.map((p) => [p._id.toString(), p]));
-  return records.map((r) => recordView(r, aMap.get(r.appointmentId.toString()), pMap.get(r.patientId.toString())));
+  const uMap = new Map(users.map((u) => [u._id.toString(), u.fullName]));
+  return records.map((r) =>
+    recordView(r, aMap.get(r.appointmentId.toString()), pMap.get(r.patientId.toString()), uMap.get(r.recordedBy.toString()) ?? null),
+  );
 }
 
 export async function getRecord(recordId: string) {
