@@ -1,0 +1,74 @@
+# Pull request: chạy kiểm thử và thử build image.
+# Push lên main: kiểm thử, build image, đẩy lên GHCR rồi gọi Render triển khai đúng image vừa build.
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: image
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+    steps:
+      - name: Gọi Render triển khai image vừa build
+        if: env.RENDER_DEPLOY_HOOK != ''
+        run: |
+          IMG="${IMAGE}@${{ needs.image.outputs.digest }}"
+          echo "Triển khai $IMG"
+          curl -fsS -X POST --get "$RENDER_DEPLOY_HOOK" --data-urlencode "imgURL=$IMG"
+      - name: Chưa cấu hình Render
+        if: env.RENDER_DEPLOY_HOOK == ''
+        run: echo "::warning::Chưa có secret RENDER_DEPLOY_HOOK, bỏ qua bước triển khai. Xem mục Triển khai trong README."

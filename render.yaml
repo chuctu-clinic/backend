@@ -1,0 +1,26 @@
+# Render Blueprint: tạo dịch vụ API chạy từ image trên GHCR.
+# Image do GitHub Actions build và đẩy lên (.github/workflows/ci-cd.yml), Render chỉ kéo về và chạy.
+services:
+  - type: web
+    name: chuctu-backend
+    runtime: image
+    image:
+      url: ghcr.io/chuctu-clinic/backend:latest
+      # Bỏ dòng creds nếu package trên GHCR để công khai
+      creds:
+        fromRegistryCreds:
+          name: ghcr-chuctu
+    plan: free
+    region: singapore
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false # nhập chuỗi kết nối MongoDB Atlas khi tạo dịch vụ
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLIENT_ORIGIN
+        value: https://chuctu-frontend.onrender.com
+      - key: SMS_PROVIDER
+        value: console

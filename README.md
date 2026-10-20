@@ -61,6 +61,29 @@ Sau đó chạy container giao diện ở repo frontend (`docker compose up --bu
 - Tài khoản Admin và Tiếp tân được tạo với mật khẩu mẫu `ChucTu@2026`. Đổi mật khẩu ngay sau lần đăng nhập đầu.
 - Cookie phiên ở production có cờ `Secure`. Trình duyệt chấp nhận cookie này trên `http://localhost`, nhưng nếu mở bằng IP hoặc tên miền thì cần HTTPS.
 
+## Triển khai (CI/CD lên Render)
+
+`.github/workflows/ci-cd.yml`:
+
+| Sự kiện | Việc chạy |
+| --- | --- |
+| Pull request | `npm test`, thử build image (không đẩy) |
+| Push lên `main` | `npm test` → build image → đẩy lên `ghcr.io/chuctu-clinic/backend` (tag `latest` và mã commit) → gọi Render Deploy Hook kèm đúng image vừa build |
+
+Render không tự build mà chỉ kéo image về chạy. Thiết lập một lần:
+
+1. **Cho Render kéo image từ GHCR.** Sau lần chạy workflow đầu tiên, package `backend` xuất hiện ở trang Packages của tổ chức `chuctu-clinic`. Chọn một trong hai:
+   - Đặt package ở chế độ Public, rồi xoá khối `creds` trong `render.yaml`; hoặc
+   - Tạo GitHub token (classic) có quyền `read:packages`, rồi trên Render vào **Settings → Container Registry Credentials** thêm credential tên `ghcr-chuctu` (registry GitHub, username GitHub, token vừa tạo).
+2. **Tạo dịch vụ.** Trên Render chọn **New → Blueprint**, trỏ vào repo này (Render đọc `render.yaml`), nhập `MONGODB_URI` (MongoDB Atlas). `JWT_SECRET` được sinh ngẫu nhiên. Nếu MongoDB Atlas giới hạn IP thì cho phép `0.0.0.0/0` hoặc dải IP ra của Render.
+3. **Nối GitHub với Render.** Vào dịch vụ `chuctu-backend` → **Settings → Deploy Hook**, chép URL. Trên GitHub vào **Settings → Secrets and variables → Actions** của repo, thêm secret `RENDER_DEPLOY_HOOK` với URL đó.
+
+Từ đó mỗi lần push lên `main`, workflow tự build và triển khai. Chưa có secret thì bước triển khai được bỏ qua (có cảnh báo), các bước khác vẫn chạy. Muốn quay lại bản cũ: vào Render → **Manual Deploy → Deploy an existing image** với tag là mã commit cũ, hoặc chạy lại workflow của commit đó.
+
+- Nếu Render đặt cho dịch vụ địa chỉ khác `chuctu-backend.onrender.com` (trùng tên), sửa `API_UPSTREAM` của dịch vụ frontend cho khớp.
+- Nếu frontend có địa chỉ khác `https://chuctu-frontend.onrender.com` (hoặc gắn tên miền riêng), sửa `CLIENT_ORIGIN`.
+- Gói Free của Render tắt dịch vụ sau 15 phút không có truy cập; lần truy cập sau chờ khoảng 1 phút để khởi động lại.
+
 ## Cấu hình (`.env`)
 
 Chép `.env.example` thành `.env`:
@@ -84,6 +107,8 @@ src/shared/       constants.js: vai trò, trạng thái phiếu, nội dung khá
                   Repo frontend có bản giống hệt ở shared/src/constants.js, sửa thì sửa cả hai.
 test/             kiểm thử theo Business Rule
 Dockerfile, docker-compose.yml
+render.yaml       Render Blueprint (dịch vụ chạy từ image GHCR)
+.github/workflows CI/CD: kiểm thử, build image, triển khai lên Render
 ```
 
 ## Đối chiếu với tài liệu
@@ -112,5 +137,4 @@ Dockerfile, docker-compose.yml
   - (b) Giữ thiết kế hiện tại, dùng một nhà cung cấp SMS có API phía server.
 
   Chỗ nối nằm ở `src/services/smsGateway.js`.
-- **Triển khai lên Render**: chưa cấu hình.
 - **Giới hạn số lần thử đăng nhập nội bộ**: chưa có.
