@@ -35,6 +35,7 @@ export async function overview(date = todayVN()) {
       completedCount: queue.completedCount,
       capacity: queue.capacity,
       slotMap: queue.slotMap,
+      waiting: queue.waiting,
     },
   };
 }

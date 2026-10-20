@@ -407,7 +407,9 @@ export async function listDay({ date, status, q }: { date: string; status?: stri
   ]);
   const summary = Object.fromEntries(Object.keys(STATUS_LABELS).map((s) => [s, 0]));
   for (const c of counts) summary[c._id] = c.n;
-  return { items, summary };
+  // Số phiếu đặt hộ tại quầy trong ngày (không tính phiếu đã huỷ)
+  const counterCount = await Appointment.countDocuments({ slotDate: slotDateValue(date), source: 'COUNTER', status: { $ne: 'CANCELLED' } });
+  return { items, summary, counterCount };
 }
 
 /** Tra cứu mã phiếu ở mọi ngày. */
