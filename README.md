@@ -6,13 +6,13 @@ Giao diện nằm ở repo [chuctu-clinic/frontend](https://github.com/chuctu-cl
 
 | Phần | Công nghệ |
 | --- | --- |
-| Backend | Node.js + Express, REST API |
+| Backend | Node.js + Express + TypeScript, REST API |
 | Cơ sở dữ liệu | MongoDB / MongoDB Atlas (Mongoose) |
 | Kiểm thử API | `node:test` + Supertest + MongoDB trong bộ nhớ |
 
 ## Chạy thử
 
-Yêu cầu Node.js 20 trở lên.
+Yêu cầu Node.js 22.18 trở lên (khuyên dùng Node.js 24). Mã nguồn viết bằng TypeScript; Node.js chạy thẳng file `.ts` (type stripping) nên không có bước build.
 
 ```bash
 npm install
@@ -37,6 +37,7 @@ Người dùng đăng nhập bằng số điện thoại, không dùng mật kh�
 
 ```bash
 npm test          # chạy kiểm thử API (34 bài: tài khoản, đặt lịch, hàng đợi)
+npm run typecheck # kiểm tra kiểu bằng tsc (chế độ strict)
 npm start         # chạy server (production)
 npm run seed      # nạp tài khoản Admin, Tiếp tân và 4 trang thông tin vào MONGODB_URI
 ```
@@ -67,8 +68,8 @@ Sau đó chạy container giao diện ở repo frontend (`docker compose up --bu
 
 | Sự kiện | Việc chạy |
 | --- | --- |
-| Pull request | `npm test`, thử build image (không đẩy) |
-| Push lên `main` | `npm test` → build image → đẩy lên `ghcr.io/chuctu-clinic/backend` (tag `latest` và mã commit) → gọi Render Deploy Hook kèm đúng image vừa build |
+| Pull request | `npm run typecheck`, `npm test`, thử build image (không đẩy) |
+| Push lên `main` | `npm run typecheck`, `npm test` → build image → đẩy lên `ghcr.io/chuctu-clinic/backend` (tag `latest` và mã commit) → gọi Render Deploy Hook kèm đúng image vừa build |
 
 Render không tự build mà chỉ kéo image về chạy. Thiết lập một lần:
 
@@ -103,8 +104,9 @@ src/models/       Mongoose: users, verificationCodes, trustedDevices, posts, pat
 src/middleware/   xác thực phiên, phân quyền USER / RECEPTIONIST / ADMIN, xử lý lỗi
 src/services/     quy tắc nghiệp vụ: auth, patient, appointment, queue, medicalRecord, post, account
 src/routes/       /api/auth, /api/me (người dùng), /api/staff (tiếp tân + admin), /api/admin
-src/shared/       constants.js: vai trò, trạng thái phiếu, nội dung khám, giới tính, quan hệ.
-                  Repo frontend có bản giống hệt ở shared/src/constants.js, sửa thì sửa cả hai.
+src/shared/       constants.ts: vai trò, trạng thái phiếu, nội dung khám, giới tính, quan hệ.
+                  Repo frontend có bản giống hệt ở shared/src/constants.ts, sửa thì sửa cả hai.
+src/types/        bổ sung kiểu cho Express (req.user)
 test/             kiểm thử theo Business Rule
 Dockerfile, docker-compose.yml
 render.yaml       Render Blueprint (dịch vụ chạy từ image GHCR)
@@ -124,7 +126,7 @@ render.yaml       Render Blueprint (dịch vụ chạy từ image GHCR)
 
 ### Cách hiểu tài liệu ở một số điểm chưa rõ
 
-1. **Ngày được đặt trực tuyến**: BR.13 ghi "1 đến 30 ngày tới", nhưng prototype cho chọn cả hôm nay và BR.14 chỉ chặn "khung đã bắt đầu". Mã hiện cho đặt từ hôm nay đến 30 ngày tới, chỉ với các khung chưa bắt đầu. Chỉnh tại `rules.booking` trong `src/config.js`.
+1. **Ngày được đặt trực tuyến**: BR.13 ghi "1 đến 30 ngày tới", nhưng prototype cho chọn cả hôm nay và BR.14 chỉ chặn "khung đã bắt đầu". Mã hiện cho đặt từ hôm nay đến 30 ngày tới, chỉ với các khung chưa bắt đầu. Chỉnh tại `rules.booking` trong `src/config.ts`.
 2. **"Đến đúng khung giờ"**: được tính là check-in từ 15 phút trước giờ bắt đầu đến hết khung (`rules.queue.priorityEarlyMinutes`). Khách đặt hộ ngay trong ngày được tính là khách đến trực tiếp, xếp nhóm Thường.
 3. **Khung giờ**: 8:00, 9:00, 10:00, 11:00, 13:00, 14:00, 15:00, 16:00, giống prototype (nghỉ trưa 12:00).
 4. **Trang Giới thiệu, Dịch vụ, Hướng dẫn, Liên hệ**: là bài viết thuộc chuyên mục "Trang thông tin", có đường dẫn cố định. Admin sửa được nội dung nhưng không xoá được.
@@ -136,5 +138,5 @@ render.yaml       Render Blueprint (dịch vụ chạy từ image GHCR)
   - (a) Đổi sang luồng Firebase: trình duyệt xác thực rồi gửi ID token cho Backend kiểm bằng `firebase-admin`.
   - (b) Giữ thiết kế hiện tại, dùng một nhà cung cấp SMS có API phía server.
 
-  Chỗ nối nằm ở `src/services/smsGateway.js`.
+  Chỗ nối nằm ở `src/services/smsGateway.ts`.
 - **Giới hạn số lần thử đăng nhập nội bộ**: chưa có.
