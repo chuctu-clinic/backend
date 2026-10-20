@@ -1,0 +1,35 @@
+# Chạy MongoDB và API:
+#   docker compose up --build
+# API ở http://localhost:4000/api. Giao diện (repo frontend) gọi vào địa chỉ này.
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  server:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      MONGODB_URI: mongodb://mongo:27017/chuc-tu
+      # Đặt JWT_SECRET trong file .env cạnh docker-compose.yml khi chạy thật
+      JWT_SECRET: ${JWT_SECRET:-doi-chuoi-nay-khi-trien-khai}
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:8080}
+      # console: mã 6 số được in ra log, xem bằng: docker compose logs -f server
+      SMS_PROVIDER: console
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+volumes:
+  mongo-data:
