@@ -336,7 +336,10 @@ export async function getUserAppointment(user, appointmentId) {
   if (!appt) throw notFound('Không tìm thấy phiếu khám.');
   const patient = await Patient.findById(appt.patientId);
   const hasResult = Boolean(await MedicalRecord.exists({ appointmentId: appt._id }));
-  return { ...appointmentView(appt, patient, { forUser: true }), hasResult };
+  const view = appointmentView(appt, patient, { forUser: true });
+  // Phiếu khám đầy đủ in ra cho người đặt: kèm ngày sinh, số điện thoại, địa chỉ người đi khám
+  if (view.patient) Object.assign(view.patient, { dob: patient.dob, gender: patient.gender, phone: patient.phone, address: patient.address });
+  return { ...view, hasResult };
 }
 
 /** Lịch trong ngày cho Tiếp tân: lọc theo trạng thái, tra cứu mã phiếu hoặc tên (UC.7.1, UC.7.2). */
@@ -361,6 +364,17 @@ export async function listDay({ date, status, q }) {
   const summary = Object.fromEntries(Object.keys(STATUS_LABELS).map((s) => [s, 0]));
   for (const c of counts) summary[c._id] = c.n;
   return { items, summary };
+}
+
+/** Các ngày trong tháng có phiếu khám chưa huỷ, để lịch chọn ngày đánh dấu. */
+export async function datesInMonth(month) {
+  const start = slotDateValue(`${month}-01`);
+  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+  const rows = await Appointment.aggregate([
+    { $match: { slotDate: { $gte: start, $lt: end }, status: { $ne: 'CANCELLED' } } },
+    { $group: { _id: '$slotDate' } },
+  ]);
+  return rows.map((r) => slotDateStr(r._id)).sort();
 }
 
 /** Tra cứu mã phiếu ở mọi ngày. */

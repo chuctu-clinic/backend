@@ -122,6 +122,22 @@ export async function inviteNext(date = todayVN(), now = new Date()) {
   return seated;
 }
 
+/** Mời đúng một người đã check-in vào khám, bấm từ Lịch trong ngày. */
+export async function enterRoom(appointmentId, now = new Date()) {
+  const checkin = await Checkin.findOne({ appointmentId, status: 'WAITING' });
+  if (!checkin) throw conflict('Người này không còn trong hàng chờ.', 'NOT_WAITING');
+  const seated = await seatOne(checkin, checkin.visitDate, now);
+  if (!seated) throw conflict(`Phòng khám đã đủ ${seats} người.`, 'ROOM_FULL');
+  return seated;
+}
+
+/** Hoàn tác vào khám theo phiếu khám, bấm từ Lịch trong ngày. */
+export async function undoEnterByAppointment(appointmentId) {
+  const checkin = await Checkin.findOne({ appointmentId, status: 'IN_ROOM' });
+  if (!checkin) throw conflict('Người này không còn trong phòng khám.', 'NOT_IN_ROOM');
+  return undoEnter(checkin._id);
+}
+
 /** Tự động lấp ghế trống bằng người đầu hàng chờ (BR.29). */
 export async function fillSeats(date = todayVN(), { exclude = [] } = {}, now = new Date()) {
   const skip = new Set(exclude.map(String));
@@ -236,10 +252,43 @@ async function slotMap(date, checkins, apptMap, pMap) {
   });
 }
 
+/** Hàng đợi thu gọn: số người trong phòng, đang chờ và 5 người kế tiếp. */
 export async function miniQueue(date = todayVN()) {
-  const [inRoom, waiting] = await Promise.all([
-    Checkin.countDocuments({ visitDate: date, status: 'IN_ROOM' }),
-    Checkin.countDocuments({ visitDate: date, status: 'WAITING' }),
-  ]);
-  return { date, inRoom, waiting, capacity: seats };
+  const [inRoom, waiting] = await Promise.all([Checkin.countDocuments({ visitDate: date, status: 'IN_ROOM' }), waitingList(date)]);
+  const head = waiting.slice(0, seats);
+  const pMap = await patientsMap(head.map((c) => c.patientId));
+  const next = head.map((c) => ({
+    id: c._id.toString(),
+    fullName: pMap.get(c.patientId.toString())?.fullName,
+    priorityGroup: c.priorityGroup,
+  }));
+  return { date, inRoom, waiting: waiting.length, capacity: seats, next };
+}
+
+/**
+ * Thông tin check-in của từng phiếu trong ngày, gắn vào Lịch trong ngày: giờ check-in, giờ vào khám,
+ * nhóm ưu tiên và thứ tự trong hàng chờ.
+ */
+export async function checkinsByAppointment(appointmentIds) {
+  const checkins = await Checkin.find({ appointmentId: { $in: appointmentIds }, status: { $in: ['WAITING', 'IN_ROOM', 'COMPLETED'] } });
+  const order = new Map();
+  const byDate = new Map();
+  for (const c of checkins.filter((x) => x.status === 'WAITING')) {
+    if (!byDate.has(c.visitDate)) byDate.set(c.visitDate, []);
+    byDate.get(c.visitDate).push(c);
+  }
+  for (const list of byDate.values()) sortWaiting(list).forEach((c, i) => order.set(c._id.toString(), i + 1));
+  return new Map(
+    checkins.map((c) => [
+      c.appointmentId.toString(),
+      {
+        id: c._id.toString(),
+        status: c.status,
+        priorityGroup: c.priorityGroup,
+        checkInTime: c.checkInTime,
+        enteredAt: c.enteredAt,
+        queueNo: order.get(c._id.toString()) ?? null,
+      },
+    ]),
+  );
 }

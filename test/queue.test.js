@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { reset, setup, staffAgent, teardown } from './helpers.js';
-import { Appointment, Checkin, Patient, User } from '../src/models/index.js';
+import { Appointment, Checkin, MedicalRecord, Patient, User } from '../src/models/index.js';
 import { priorityGroupFor } from '../src/services/queue.service.js';
 import { slotDateValue, slotInstant, todayVN } from '../src/utils/time.js';
 
@@ -141,5 +141,47 @@ describe('Check-in và điều phối hàng đợi', () => {
     await staff.patch(`/api/staff/patients/${a.patientId}`).send({ fullName: 'Tên mới' }).expect(403);
     const detail = await staff.get(`/api/staff/patients/${a.patientId}`).expect(200);
     assert.equal(detail.body.patient.isLocked, true);
+  });
+
+  it('mời đúng một người vào khám và hoàn tác từ Lịch trong ngày', async () => {
+    const staff = await staffAgent();
+    await staff.put('/api/staff/queue/auto-invite').send({ enabled: false }).expect(200);
+    const first = await todayAppointment('Người đầu');
+    const second = await todayAppointment('Người sau');
+    await staff.post(`/api/staff/appointments/${first._id}/checkin`).expect(200);
+    await staff.post(`/api/staff/appointments/${second._id}/checkin`).expect(200);
+
+    const entered = await staff.post(`/api/staff/appointments/${second._id}/enter`).expect(200);
+    assert.equal(entered.body.appointment.status, 'IN_PROGRESS');
+    const day = (await staff.get('/api/staff/appointments').expect(200)).body;
+    const row = day.items.find((x) => x.id === second._id.toString());
+    assert.equal(row.checkin.status, 'IN_ROOM');
+    assert.ok(row.checkin.enteredAt);
+    assert.equal(day.items.find((x) => x.id === first._id.toString()).checkin.queueNo, 1);
+
+    const mini = (await staff.get('/api/staff/queue/mini').expect(200)).body;
+    assert.equal(mini.inRoom, 1);
+    assert.deepEqual(mini.next.map((n) => n.fullName), ['Người đầu']);
+
+    const undone = await staff.post(`/api/staff/appointments/${second._id}/undo-enter`).expect(200);
+    assert.equal(undone.body.appointment.status, 'CHECKED_IN');
+    await staff.post(`/api/staff/appointments/${second._id}/undo-enter`).expect(409);
+  });
+
+  it('phiếu kết quả chỉ sửa được trong 24 giờ sau khi xác nhận', async () => {
+    const staff = await staffAgent();
+    const a = await todayAppointment('Người quá hạn sửa');
+    await staff.post(`/api/staff/appointments/${a._id}/checkin`).expect(200);
+    const created = await staff.post(`/api/staff/appointments/${a._id}/record`).send({ diagnosis: 'Đau gối' }).expect(201);
+    assert.ok(created.body.record.editableUntil);
+    // Ghi thẳng vào collection để mongoose không tự đặt lại createdAt
+    const rec = await MedicalRecord.findById(created.body.record.id);
+    await MedicalRecord.collection.updateOne({ _id: rec._id }, { $set: { createdAt: new Date(Date.now() - 25 * 3600_000) } });
+    await staff.put(`/api/staff/records/${created.body.record.id}`).send({ diagnosis: 'Thoái hoá khớp gối' }).expect(403);
+
+    const list = (await staff.get(`/api/staff/patients?q=${encodeURIComponent('Người quá hạn sửa')}`).expect(200)).body;
+    assert.equal(list.items[0].lastVisitDate, todayVN());
+    const dates = (await staff.get(`/api/staff/appointments/dates?month=${todayVN().slice(0, 7)}`).expect(200)).body;
+    assert.ok(dates.dates.includes(todayVN()));
   });
 });

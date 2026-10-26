@@ -57,7 +57,8 @@ router.get(
   '/patients',
   ah(async (req, res) => {
     const list = await patients.listOwnProfiles(req.user._id);
-    res.json({ items: list.map((p) => p.toPublic()), max: 10 });
+    const last = await patients.lastVisitDates(list.map((p) => p._id));
+    res.json({ items: list.map((p) => ({ ...p.toPublic(), lastVisitDate: last[p._id.toString()] ?? null })), max: 10 });
   }),
 );
 

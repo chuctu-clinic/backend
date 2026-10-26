@@ -16,16 +16,39 @@ export const serviceType = z.enum(Object.keys(SERVICE_TYPES), {
 export const slotStart = z.enum(rules.booking.slots, { errorMap: () => ({ message: 'Cô chú vui lòng chọn giờ khám.' }) });
 const relationship = z.enum(RELATIONSHIPS, { errorMap: () => ({ message: 'Cô chú vui lòng chọn quan hệ với người đi khám.' }) });
 
-/** Hồ sơ khám do người dùng tự lập cho mình hoặc người thân. */
-export const profileSchema = z.object({
+const optionalNationalId = z
+  .union([z.string().trim().regex(/^\d{9}$|^\d{12}$/, 'Số căn cước gồm 12 chữ số (hoặc 9 số với CMND cũ).'), z.literal(''), z.null()])
+  .optional()
+  .transform((v) => (v ? v : null));
+const optionalEmail = z
+  .union([z.string().trim().email('Email chưa đúng định dạng.').max(200), z.literal(''), z.null()])
+  .optional()
+  .transform((v) => (v ? v.toLowerCase() : null));
+
+const thisYear = Number(todayVN().slice(0, 4));
+const birthYear = z.coerce
+  .number({ invalid_type_error: 'Vui lòng chọn năm sinh.' })
+  .int('Năm sinh chưa đúng.')
+  .min(1900, 'Năm sinh chưa đúng.')
+  .max(thisYear, 'Năm sinh chưa đúng.');
+
+/** Hồ sơ khám do người dùng tự lập cho mình hoặc người thân: cần ngày sinh, hoặc ít nhất năm sinh. */
+const profileFields = z.object({
   fullName,
   phone: optionalPhone,
-  dob: pastDate,
+  dob: pastDate.optional().nullable(),
+  birthYear: birthYear.optional().nullable(),
   gender,
   relationship,
   address: optionalText(300),
+  nationalId: optionalNationalId,
+  email: optionalEmail,
 });
-export const profileUpdateSchema = profileSchema.partial();
+export const profileSchema = profileFields.refine((d) => d.dob || d.birthYear, {
+  message: 'Cô chú vui lòng chọn ngày sinh hoặc năm sinh.',
+  path: ['dob'],
+});
+export const profileUpdateSchema = profileFields.partial();
 
 export const accountUpdateSchema = z.object({
   fullName: fullName.optional(),
@@ -43,15 +66,10 @@ export const bookingSchema = z.object({
 });
 
 /** Tiếp tân tạo hồ sơ: bắt buộc họ tên, năm sinh, số điện thoại (BR.25). */
-const thisYear = Number(todayVN().slice(0, 4));
 export const staffPatientSchema = z.object({
   fullName,
   phone,
-  birthYear: z.coerce
-    .number({ invalid_type_error: 'Vui lòng nhập năm sinh.' })
-    .int('Năm sinh chưa đúng.')
-    .min(1900, 'Năm sinh chưa đúng.')
-    .max(thisYear, 'Năm sinh chưa đúng.'),
+  birthYear,
   dob: pastDate.optional().nullable(),
   gender: gender.optional().nullable(),
   address: optionalText(300),

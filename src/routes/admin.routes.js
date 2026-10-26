@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { z } from 'zod';
 import { rules } from '../config.js';
 import { requireAdmin } from '../middleware/auth.js';
@@ -7,6 +7,7 @@ import * as accounts from '../services/account.service.js';
 import * as dashboard from '../services/dashboard.service.js';
 import * as patients from '../services/patient.service.js';
 import * as posts from '../services/post.service.js';
+import * as uploads from '../services/upload.service.js';
 import { ah } from '../utils/errors.js';
 import { fullName, optionalText, paging, parse, phone } from '../utils/validate.js';
 
@@ -119,14 +120,23 @@ const postSchema = z.object({
   category: z.enum(Object.keys(POST_CATEGORIES), { errorMap: () => ({ message: 'Vui lòng chọn chuyên mục.' }) }),
   summary: z.string().trim().max(400, 'Tóm tắt tối đa 400 ký tự.').optional().default(''),
   thumbnailUrl: z
-    .union([z.string().trim().url('Đường dẫn ảnh chưa đúng.'), z.literal(''), z.null()])
+    .union([z.string().trim().url('Đường dẫn ảnh chưa đúng.'), z.string().regex(/^\/api\/uploads\/[a-f\d]{24}$/,'Đường dẫn ảnh chưa đúng.'), z.literal(''), z.null()])
     .optional()
     .transform((v) => (v ? v : null)),
   authorName: z.string().trim().max(100).optional(),
   publishedAt: z.string().datetime({ offset: true }).optional().nullable(),
   content: z.string().max(100_000).optional().default(''),
-  status: z.enum(['DRAFT', 'PUBLISHED']).default('DRAFT'),
+  status: z.enum(['DRAFT', 'PUBLISHED', 'HIDDEN']).default('DRAFT'),
 });
+
+// Ảnh cho bài viết: gửi thẳng nội dung ảnh (đã thu nhỏ ở trình duyệt), tối đa 3 MB
+router.post(
+  '/uploads',
+  express.raw({ type: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], limit: '3mb' }),
+  ah(async (req, res) => {
+    res.status(201).json(await uploads.saveImage(req.user, req.headers['content-type'], req.body));
+  }),
+);
 
 router.get(
   '/posts',

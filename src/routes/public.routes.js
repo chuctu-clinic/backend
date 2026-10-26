@@ -3,6 +3,7 @@ import { rules } from '../config.js';
 import { POST_CATEGORIES, RELATIONSHIPS, SERVICE_TYPES } from '../models/index.js';
 import { COUNTER_CANCEL_REASONS, STATUS_LABELS } from '../services/appointment.service.js';
 import * as posts from '../services/post.service.js';
+import * as uploads from '../services/upload.service.js';
 import { ah } from '../utils/errors.js';
 import { paging } from '../utils/validate.js';
 import { todayVN } from '../utils/time.js';
@@ -19,6 +20,8 @@ router.get('/meta', (req, res) => {
     userMaxDays: rules.booking.userMaxDays,
     counterMaxDays: rules.booking.counterMaxDays,
     seats: rules.queue.seats,
+    priorityEarlyMinutes: rules.queue.priorityEarlyMinutes,
+    slotMinutes: rules.booking.slotMinutes,
     maxProfiles: rules.maxProfilesPerAccount,
     relationships: RELATIONSHIPS,
     statusLabels: STATUS_LABELS,
@@ -26,6 +29,16 @@ router.get('/meta', (req, res) => {
     postCategories: Object.entries(POST_CATEGORIES).map(([value, label]) => ({ value, label })),
   });
 });
+
+// Ảnh bài viết do Admin tải lên; mã ảnh không đổi nên trình duyệt giữ lâu được
+router.get(
+  '/uploads/:id',
+  ah(async (req, res) => {
+    const img = await uploads.getImage(req.params.id);
+    res.set({ 'Content-Type': img.contentType, 'Cache-Control': 'public, max-age=31536000, immutable' });
+    res.send(img.data);
+  }),
+);
 
 // ---------- Bài viết công khai (UC.4.1 – UC.4.3), không cần đăng nhập ----------
 

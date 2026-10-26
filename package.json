@@ -6,6 +6,7 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "node --watch src/index.js",
+    "dev:demo": "node --watch src/index.js --demo",
     "start": "node src/index.js",
     "seed": "node src/seed.js",
     "test": "node --test --test-concurrency=1 \"test/*.test.js\""

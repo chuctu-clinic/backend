@@ -55,14 +55,16 @@ function assertPublishable(data) {
 
 export async function adminList({ status, category, q, skip, limit }) {
   const filter = {};
-  if (status === 'DRAFT' || status === 'PUBLISHED') filter.status = status;
+  if (['DRAFT', 'PUBLISHED', 'HIDDEN'].includes(status)) filter.status = status;
   if (category && POST_CATEGORIES[category]) filter.category = category;
   if (q) filter.title = new RegExp(escapeRegex(q.trim()), 'i');
   const [items, total] = await Promise.all([
     Post.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit),
     Post.countDocuments(filter),
   ]);
-  return { items: items.map((p) => postView(p, { full: false })), total };
+  const counts = await Post.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]);
+  const statusCounts = Object.fromEntries(['PUBLISHED', 'DRAFT', 'HIDDEN'].map((s) => [s, counts.find((c) => c._id === s)?.n || 0]));
+  return { items: items.map((p) => postView(p, { full: false })), total, statusCounts };
 }
 
 export async function adminGet(id) {
@@ -81,11 +83,12 @@ export async function createPost(admin, data) {
     authorId: admin._id,
     authorName: data.authorName || admin.fullName,
     status: data.status,
-    publishedAt: null,
+    // Bản nháp cũng giữ ngày đăng đã chọn, để khi công khai dùng đúng ngày đó
+    publishedAt: data.publishedAt ? new Date(data.publishedAt) : null,
   };
   if (data.status === 'PUBLISHED') {
     assertPublishable(doc);
-    doc.publishedAt = data.publishedAt ? new Date(data.publishedAt) : new Date();
+    doc.publishedAt ??= new Date();
   }
   return postView(await Post.create(doc));
 }
@@ -98,10 +101,10 @@ export async function updatePost(id, data) {
   }
   if (post.slug && PAGE_SLUGS.includes(post.slug)) post.category = 'TRANG';
   if (data.status) post.status = data.status;
+  if (data.publishedAt) post.publishedAt = new Date(data.publishedAt);
   if (post.status === 'PUBLISHED') {
     assertPublishable(post);
-    if (data.publishedAt) post.publishedAt = new Date(data.publishedAt);
-    else if (!post.publishedAt) post.publishedAt = new Date();
+    if (!post.publishedAt) post.publishedAt = new Date();
   }
   await post.save();
   return postView(post);

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { badRequest } from './errors.js';
 import { isDateStr } from './time.js';
+import { normalizePhone, phoneProblem } from '@chuctu/shared/phone.js';
 
 /** Kiểm tra dữ liệu theo schema zod; lỗi trả về theo từng trường để giao diện hiện ngay dưới ô nhập. */
 export function parse(schema, data) {
@@ -16,19 +17,15 @@ export function parse(schema, data) {
   return result.data;
 }
 
-/** Chuẩn hoá số điện thoại Việt Nam về dạng 0xxxxxxxxx. */
-export function normalizePhone(raw) {
-  if (typeof raw !== 'string') return raw;
-  let s = raw.replace(/[\s.\-()]/g, '');
-  if (s.startsWith('+84')) s = '0' + s.slice(3);
-  else if (s.startsWith('84') && s.length === 11) s = '0' + s.slice(2);
-  return s;
-}
+export { normalizePhone };
 
 export const phone = z
   .string({ required_error: 'Cô chú vui lòng nhập số điện thoại.' })
   .transform(normalizePhone)
-  .refine((s) => /^0[35789]\d{8}$/.test(s), 'Số điện thoại chưa đúng định dạng (10 số, bắt đầu bằng 0).');
+  .superRefine((s, ctx) => {
+    const problem = phoneProblem(s);
+    if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+  });
 
 export const fullName = z
   .string({ required_error: 'Cô chú vui lòng nhập họ và tên.' })

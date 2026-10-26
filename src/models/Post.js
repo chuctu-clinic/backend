@@ -21,7 +21,8 @@ const postSchema = new mongoose.Schema(
     authorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     authorName: { type: String, required: true },
     content: { type: String, default: '' },
-    status: { type: String, enum: ['DRAFT', 'PUBLISHED'], default: 'DRAFT' },
+    // HIDDEN: đã công khai rồi tạm ẩn khỏi website, giữ nguyên ngày đăng
+    status: { type: String, enum: ['DRAFT', 'PUBLISHED', 'HIDDEN'], default: 'DRAFT' },
     publishedAt: { type: Date, default: null },
   },
   { timestamps: true },

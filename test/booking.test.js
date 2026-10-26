@@ -68,6 +68,41 @@ describe('Đặt lịch khám', () => {
     await b.post(`/api/me/appointments/${appt.id}/cancel`).send({}).expect(404);
   });
 
+  it('hồ sơ người thân lưu số căn cước, email; phiếu khám có đủ thông tin người đi khám', async () => {
+    const agent = await registerUser();
+    const bad = await agent
+      .post('/api/me/patients')
+      .send({ fullName: 'Trần Văn Bảy', dob: '1949-11-08', gender: 'NAM', relationship: 'VO_CHONG', nationalId: '123', email: 'sai' })
+      .expect(400);
+    assert.ok(bad.body.error.fields.nationalId);
+    assert.ok(bad.body.error.fields.email);
+
+    const created = await agent
+      .post('/api/me/patients')
+      .send({ fullName: 'Trần Văn Bảy', dob: '1949-11-08', gender: 'NAM', relationship: 'VO_CHONG', nationalId: '079049000123', email: 'Bay@Example.com', address: '12 Nguyễn Văn Đậu' })
+      .expect(201);
+    assert.equal(created.body.patient.nationalId, '079049000123');
+    assert.equal(created.body.patient.email, 'bay@example.com');
+
+    // Đặt cho người thân lần đầu chỉ cần năm sinh; thiếu cả ngày sinh lẫn năm sinh thì báo lỗi
+    const yearOnly = await agent
+      .post('/api/me/patients')
+      .send({ fullName: 'Nguyễn Minh Khang', phone: '0912000111', birthYear: 1981, gender: 'NAM', relationship: 'CON' })
+      .expect(201);
+    assert.equal(yearOnly.body.patient.birthYear, 1981);
+    assert.equal(yearOnly.body.patient.dob, null);
+    const noBirth = await agent.post('/api/me/patients').send({ fullName: 'Không Ngày Sinh', gender: 'NU', relationship: 'CON' }).expect(400);
+    assert.ok(noBirth.body.error.fields.dob);
+
+    const list = await agent.get('/api/me/patients').expect(200);
+    assert.ok(list.body.items.every((p) => 'lastVisitDate' in p));
+
+    const res = await book(agent, created.body.patient.id, futureDate(2)).expect(201);
+    const patient = res.body.appointment.patient;
+    assert.equal(patient.address, '12 Nguyễn Văn Đậu');
+    assert.equal(String(patient.dob).slice(0, 10), '1949-11-08');
+  });
+
   it('mỗi tài khoản tối đa 10 hồ sơ khám (BR.12)', async () => {
     const agent = await registerUser();
     for (let i = 0; i < 9; i += 1) {

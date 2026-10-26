@@ -1,9 +1,12 @@
-import { Appointment, Checkin, MedicalRecord, Patient, SERVICE_TYPES } from '../models/index.js';
+import { Appointment, Checkin, MedicalRecord, Patient, SERVICE_TYPES, User } from '../models/index.js';
 import { conflict, forbidden, notFound } from '../utils/errors.js';
 import { slotDateStr, slotDateValue, todayVN } from '../utils/time.js';
 import { completeCheckin } from './queue.service.js';
 
 const EDITABLE = ['diagnosis', 'pulse', 'bloodPressure', 'medicalHistory', 'doctorName'];
+
+/** Phiếu kết quả chỉ sửa được trong 24 giờ kể từ lúc xác nhận. */
+export const EDIT_WINDOW_MS = 24 * 3600_000;
 
 function toDate(s) {
   return s ? new Date(`${s}T00:00:00Z`) : null;
@@ -29,10 +32,20 @@ export function recordView(r, appt, patient) {
     editHistory: (r.editHistory || []).map((h) => ({ editedByName: h.editedByName, editedAt: h.editedAt, changes: h.changes })),
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
+    editableUntil: r.createdAt ? new Date(r.createdAt.getTime() + EDIT_WINDOW_MS) : null,
     appointment: appt
       ? { id: appt._id.toString(), ticketCode: appt.ticketCode, slotStart: appt.slotStart, serviceType: appt.serviceType, serviceLabel: SERVICE_TYPES[appt.serviceType] }
       : null,
-    patient: patient ? { id: patient._id.toString(), fullName: patient.fullName, patientCode: patient.patientCode } : null,
+    patient: patient
+      ? {
+          id: patient._id.toString(),
+          fullName: patient.fullName,
+          patientCode: patient.patientCode,
+          dob: patient.dob,
+          birthYear: patient.birthYear ?? (patient.dob ? patient.dob.getUTCFullYear() : null),
+          phone: patient.phone,
+        }
+      : null,
   };
 }
 
@@ -73,6 +86,9 @@ export async function updateRecord(staff, recordId, data) {
   if (!record) throw notFound('Không tìm thấy phiếu kết quả.');
   const patient = await Patient.findById(record.patientId);
   if (patient.isLocked) throw forbidden('Hồ sơ đang bị khoá nên không sửa được phiếu kết quả.');
+  if (Date.now() - record.createdAt.getTime() > EDIT_WINDOW_MS) {
+    throw forbidden('Phiếu kết quả chỉ sửa được trong 24 giờ sau khi xác nhận.');
+  }
 
   const changes = {};
   for (const key of EDITABLE) {
@@ -111,7 +127,12 @@ async function viewsFor(records) {
   const patients = await Patient.find({ _id: { $in: records.map((r) => r.patientId) } });
   const aMap = new Map(appts.map((a) => [a._id.toString(), a]));
   const pMap = new Map(patients.map((p) => [p._id.toString(), p]));
-  return records.map((r) => recordView(r, aMap.get(r.appointmentId.toString()), pMap.get(r.patientId.toString())));
+  const staff = await User.find({ _id: { $in: records.map((r) => r.recordedBy) } }).select('fullName').lean();
+  const sMap = new Map(staff.map((u) => [u._id.toString(), u.fullName]));
+  return records.map((r) => ({
+    ...recordView(r, aMap.get(r.appointmentId.toString()), pMap.get(r.patientId.toString())),
+    recordedByName: sMap.get(r.recordedBy?.toString()) ?? null,
+  }));
 }
 
 export async function getRecord(recordId) {
@@ -123,6 +144,15 @@ export async function getRecord(recordId) {
 export async function getRecordByAppointment(appointmentId) {
   const record = await MedicalRecord.findOne({ appointmentId });
   return record ? (await viewsFor([record]))[0] : null;
+}
+
+/** Ngày khám gần nhất của từng hồ sơ, dùng cho danh sách hồ sơ bệnh nhân. */
+export async function lastVisitByPatient(patientIds) {
+  const rows = await MedicalRecord.aggregate([
+    { $match: { patientId: { $in: patientIds } } },
+    { $group: { _id: '$patientId', last: { $max: '$visitDate' } } },
+  ]);
+  return new Map(rows.map((r) => [r._id.toString(), slotDateStr(r.last)]));
 }
 
 /** Lịch sử khám chỉ gồm các lượt thuộc hồ sơ đang tra cứu (BR.39). */
@@ -141,8 +171,7 @@ export async function getUserResult(user, appointmentId) {
   const ids = await ownPatientIds(user._id);
   const record = await MedicalRecord.findOne({ appointmentId, patientId: { $in: ids } });
   if (!record) throw notFound('Phiếu khám này chưa có kết quả.');
-  const [view] = await viewsFor([record]);
-  delete view.editHistory;
+  const [{ editHistory, recordedByName, ...view }] = await viewsFor([record]);
   return view;
 }
 
@@ -150,5 +179,5 @@ export async function listUserHistory(user, { patientId } = {}) {
   let ids = await ownPatientIds(user._id);
   if (patientId) ids = ids.filter((id) => id.toString() === patientId);
   const views = await viewsFor(await MedicalRecord.find({ patientId: { $in: ids } }).sort({ visitDate: -1 }));
-  return views.map(({ editHistory, ...v }) => v);
+  return views.map(({ editHistory, recordedByName, ...v }) => v);
 }

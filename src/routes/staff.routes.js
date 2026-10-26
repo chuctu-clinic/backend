@@ -21,7 +21,18 @@ router.get(
   ah(async (req, res) => {
     const date = req.query.date || todayVN();
     parse(z.object({ date: dateStr }), { date });
-    res.json({ date, ...(await appts.listDay({ date, status: req.query.status, q: req.query.q })) });
+    const day = await appts.listDay({ date, status: req.query.status, q: req.query.q });
+    const checkins = await queue.checkinsByAppointment(day.items.map((a) => a.id));
+    const items = day.items.map((a) => ({ ...a, checkin: checkins.get(a.id) ?? null }));
+    res.json({ date, ...day, items });
+  }),
+);
+
+router.get(
+  '/appointments/dates',
+  ah(async (req, res) => {
+    const { month } = parse(z.object({ month: z.string().regex(/^\d{4}-\d{2}$/, 'Tháng không hợp lệ.') }), req.query);
+    res.json({ month, dates: await appts.datesInMonth(month) });
   }),
 );
 
@@ -103,6 +114,22 @@ router.post(
   }),
 );
 
+router.post(
+  '/appointments/:id/enter',
+  ah(async (req, res) => {
+    await queue.enterRoom(req.params.id);
+    res.json({ appointment: await appts.getStaffAppointment(req.params.id) });
+  }),
+);
+
+router.post(
+  '/appointments/:id/undo-enter',
+  ah(async (req, res) => {
+    await queue.undoEnterByAppointment(req.params.id);
+    res.json({ appointment: await appts.getStaffAppointment(req.params.id) });
+  }),
+);
+
 // ---------- Hàng đợi (UC.10.1 – UC.10.5) ----------
 
 router.get(
@@ -152,7 +179,8 @@ router.get(
   ah(async (req, res) => {
     const { page, limit, skip } = paging(req.query);
     const { items, total } = await patients.searchPatients({ q: req.query.q, locked: req.query.locked, skip, limit });
-    res.json({ items: items.map((p) => p.toPublic()), total, page, limit });
+    const lastVisits = await records.lastVisitByPatient(items.map((p) => p._id));
+    res.json({ items: items.map((p) => ({ ...p.toPublic(), lastVisitDate: lastVisits.get(p._id.toString()) ?? null })), total, page, limit });
   }),
 );
 

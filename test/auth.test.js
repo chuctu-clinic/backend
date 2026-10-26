@@ -29,7 +29,7 @@ describe('Đăng ký và đăng nhập người dùng', () => {
       .post('/api/auth/register')
       .send({ fullName: 'A B', phone: '12345', dob: '1970-01-01', gender: 'NU' })
       .expect(400);
-    assert.match(res.body.error.fields.phone, /định dạng/);
+    assert.match(res.body.error.fields.phone, /thiếu 4 chữ số/);
   });
 
   it('mã sai thì không tạo tài khoản và báo số lần còn lại', async () => {
@@ -82,8 +82,9 @@ describe('Đăng ký và đăng nhập người dùng', () => {
 
   it('người dùng không có quyền vào khu vực tiếp tân (QAs1)', async () => {
     const agent = await registerUser('0911000005');
-    await agent.get('/api/staff/patients').expect(403);
-    await agent.get('/api/admin/accounts').expect(403);
+    // Phiên người dùng không được đọc ở API nội bộ, nên coi như chưa đăng nhập khu nội bộ
+    await agent.get('/api/staff/patients').expect(401);
+    await agent.get('/api/admin/accounts').expect(401);
   });
 });
 
@@ -130,5 +131,28 @@ describe('Tài khoản nội bộ', () => {
       .send({ fullName: 'Lễ Tân', phone: '0900000098', role: 'RECEPTIONIST', tempPassword: '123' })
       .expect(400);
     assert.ok(res.body.error.fields.tempPassword);
+  });
+});
+
+describe('Phiên trang người dùng và khu nội bộ độc lập', () => {
+  it('đăng nhập bên này không làm bên kia thoát, đăng xuất bên nào chỉ thoát bên đó', async () => {
+    const agent = await registerUser('0911000099', 'Người dùng hai phiên');
+    await agent.post('/api/auth/staff/login').send({ identifier: 'letan@chuctu.vn', password: 'ChucTu@2026' }).expect(200);
+
+    const asUser = await agent.get('/api/auth/me').set('X-App', 'users').expect(200);
+    assert.equal(asUser.body.user.role, 'USER');
+    const asStaff = await agent.get('/api/auth/me').set('X-App', 'staff').expect(200);
+    assert.equal(asStaff.body.user.role, 'RECEPTIONIST');
+    await agent.get('/api/me/patients').expect(200);
+    await agent.get('/api/staff/queue').expect(200);
+
+    await agent.post('/api/auth/logout').set('X-App', 'staff').expect(200);
+    await agent.get('/api/staff/queue').expect(401);
+    await agent.get('/api/me/patients').expect(200);
+
+    await agent.post('/api/auth/staff/login').send({ identifier: 'letan@chuctu.vn', password: 'ChucTu@2026' }).expect(200);
+    await agent.post('/api/auth/logout').set('X-App', 'users').expect(200);
+    await agent.get('/api/me/patients').expect(401);
+    await agent.get('/api/staff/queue').expect(200);
   });
 });

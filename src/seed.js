@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { Appointment, Patient, Post, SlotCounter, User, nextSeq } from './models/index.js';
+import { seedClinicDemo } from './demoClinic.js';
 import { hashPassword } from './services/auth.service.js';
 import { createPatient } from './services/patient.service.js';
 import { addDays, ddmm, slotDateValue, slotInstant, todayVN, yy } from './utils/time.js';
@@ -218,6 +219,8 @@ async function seedDemo(admin, receptionist) {
     const p = await createPatient({ fullName, birthYear, phone }, { createdBy: receptionist._id });
     await demoAppointment(p, null, receptionist, today, start, service, 'COUNTER');
   }
+  // Lịch trong ngày, hàng đợi, lịch sử khám… cho khu Tiếp tân và Admin
+  await seedClinicDemo({ receptionist });
 }
 
 export async function seed({ demo = false } = {}) {

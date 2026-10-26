@@ -37,12 +37,14 @@ export async function createPatient(data, { userId = null, relationship = null, 
     gender: data.gender ?? null,
     phone: data.phone ?? null,
     address: data.address ?? null,
+    nationalId: data.nationalId ?? null,
+    email: data.email ?? null,
     createdBy,
   });
 }
 
 function applyUpdate(patient, data) {
-  for (const key of ['fullName', 'gender', 'phone', 'address', 'relationship']) {
+  for (const key of ['fullName', 'gender', 'phone', 'address', 'relationship', 'nationalId', 'email']) {
     if (data[key] !== undefined) patient[key] = data[key];
   }
   if (data.dob !== undefined) {
@@ -56,6 +58,15 @@ function applyUpdate(patient, data) {
 
 export async function listOwnProfiles(userId) {
   return Patient.find({ userId }).sort({ relationship: 1, createdAt: 1 });
+}
+
+/** Ngày khám gần nhất (phiếu đã hoàn thành) của từng hồ sơ, dạng { patientId: Date }. */
+export async function lastVisitDates(patientIds) {
+  const rows = await Appointment.aggregate([
+    { $match: { patientId: { $in: patientIds }, status: 'COMPLETED' } },
+    { $group: { _id: '$patientId', last: { $max: '$slotDate' } } },
+  ]);
+  return Object.fromEntries(rows.map((r) => [r._id.toString(), r.last]));
 }
 
 export async function getOwnProfile(userId, patientId) {

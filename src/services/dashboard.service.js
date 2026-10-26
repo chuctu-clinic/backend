@@ -26,6 +26,7 @@ export async function overview(date = todayVN()) {
     posts: {
       published: posts.find((p) => p._id === 'PUBLISHED')?.n || 0,
       draft: posts.find((p) => p._id === 'DRAFT')?.n || 0,
+      hidden: posts.find((p) => p._id === 'HIDDEN')?.n || 0,
     },
     accounts: Object.fromEntries(users.map((u) => [u._id, u.n])),
     drafts: drafts.map((p) => postView(p, { full: false })),
@@ -35,6 +36,7 @@ export async function overview(date = todayVN()) {
       completedCount: queue.completedCount,
       capacity: queue.capacity,
       slotMap: queue.slotMap,
+      waiting: queue.waiting.map((w) => ({ ticketCode: w.ticketCode, priorityGroup: w.priorityGroup })),
     },
   };
 }
