@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { config, rules } from '../config.js';
 import { User, STAFF_ROLES } from '../models/index.js';
-import { forbidden, unauthorized } from '../utils/errors.js';
+import { conflict, forbidden, unauthorized } from '../utils/errors.js';
 
 // Trang người dùng và khu nội bộ giữ hai phiên riêng: đăng nhập hay đăng xuất bên này không làm bên kia thoát
 export const SESSION_COOKIE = 'ct_session';
@@ -53,6 +53,22 @@ export function setDeviceCookie(res, deviceId) {
  * đổi vai trò được áp dụng ngay ở yêu cầu kế tiếp (BR.32, BR.33).
  */
 export async function loadUser(req, res, next) {
+  try {
+    await readSession(req, res);
+  } catch (err) {
+    return next(err);
+  }
+  // Mỗi tab gửi kèm tài khoản nó đang hiển thị. Cookie là chung cho mọi tab của trình duyệt, nên nếu
+  // tab khác vừa đăng nhập tài khoản khác (hoặc đăng xuất) thì từ chối, tránh ghi thao tác nhầm tên người khác.
+  // Các API /auth (xem phiên, đăng nhập, đăng xuất) vẫn cho qua để tab tự cập nhật lại.
+  const expected = req.get('x-session-user');
+  if (expected && !(req.originalUrl || '').startsWith('/api/auth/') && expected !== String(req.user?._id ?? '')) {
+    return next(conflict('Tài khoản trên trình duyệt này vừa thay đổi ở một thẻ khác. Trang sẽ tải lại theo tài khoản hiện tại.', 'SESSION_CHANGED'));
+  }
+  next();
+}
+
+async function readSession(req, res) {
   req.user = null;
   let app = appOf(req);
   // Không rõ bên nào (ví dụ gọi thẳng API): dùng phiên nào đang có
@@ -71,7 +87,7 @@ export async function loadUser(req, res, next) {
       /* cookie cũ hỏng thì bỏ qua */
     }
   }
-  if (!token) return next();
+  if (!token) return;
   try {
     const payload = jwt.verify(token, config.jwtSecret);
     const user = await User.findById(payload.sub);
@@ -80,7 +96,6 @@ export async function loadUser(req, res, next) {
   } catch {
     clearSession(res, app);
   }
-  next();
 }
 
 export function requireAuth(req, res, next) {

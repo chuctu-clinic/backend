@@ -156,3 +156,31 @@ describe('Phiên trang người dùng và khu nội bộ độc lập', () => {
     await agent.get('/api/staff/queue').expect(200);
   });
 });
+
+describe('Nhiều tab trên cùng trình duyệt', () => {
+  it('từ chối thao tác của tab còn hiển thị tài khoản cũ sau khi tab khác đăng nhập tài khoản khác', async () => {
+    const agent = request.agent(app);
+    const a = await agent.post('/api/auth/staff/login').send({ identifier: 'letan@chuctu.vn', password: 'ChucTu@2026' }).expect(200);
+    const idA = a.body.user.id;
+    await agent.get('/api/staff/queue').set('X-Session-User', idA).expect(200);
+
+    // Tab khác (cùng cookie) đăng nhập bằng tài khoản admin
+    const b = await agent.post('/api/auth/staff/login').send({ identifier: 'admin@chuctu.vn', password: 'ChucTu@2026' }).expect(200);
+    assert.notEqual(b.body.user.id, idA);
+
+    const res = await agent.get('/api/staff/queue').set('X-Session-User', idA).expect(409);
+    assert.equal(res.body.error.code, 'SESSION_CHANGED');
+    // Tab vẫn xem được phiên hiện tại để tự tải lại
+    const me = await agent.get('/api/auth/me').set('X-App', 'staff').set('X-Session-User', idA).expect(200);
+    assert.equal(me.body.user.id, b.body.user.id);
+    await agent.get('/api/staff/queue').set('X-Session-User', b.body.user.id).expect(200);
+  });
+
+  it('từ chối thao tác của tab khác sau khi đã đăng xuất', async () => {
+    const agent = await staffAgent();
+    const me = await agent.get('/api/auth/me').set('X-App', 'staff').expect(200);
+    await agent.post('/api/auth/logout').set('X-App', 'staff').expect(200);
+    const res = await agent.get('/api/staff/queue').set('X-Session-User', me.body.user.id).expect(409);
+    assert.equal(res.body.error.code, 'SESSION_CHANGED');
+  });
+});
