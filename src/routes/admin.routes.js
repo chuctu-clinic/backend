@@ -118,7 +118,7 @@ router.post(
 const postSchema = z.object({
   title: z.string().trim().max(200, 'Tiêu đề tối đa 200 ký tự.').default(''),
   category: z.enum(Object.keys(POST_CATEGORIES), { errorMap: () => ({ message: 'Vui lòng chọn chuyên mục.' }) }),
-  summary: z.string().trim().max(400, 'Tóm tắt tối đa 400 ký tự.').optional().default(''),
+  summary: z.string().trim().max(300, 'Mô tả tối đa 300 ký tự.').optional().default(''),
   thumbnailUrl: z
     .union([z.string().trim().url('Đường dẫn ảnh chưa đúng.'), z.string().regex(/^\/api\/uploads\/[a-f\d]{24}$/,'Đường dẫn ảnh chưa đúng.'), z.literal(''), z.null()])
     .optional()

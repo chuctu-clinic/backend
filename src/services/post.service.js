@@ -45,6 +45,7 @@ export async function getPublished(idOrSlug) {
 function assertPublishable(data) {
   const missing = {};
   if (!data.title) missing.title = 'Bài viết cần có tiêu đề.';
+  if (!data.summary || !data.summary.trim()) missing.summary = 'Bài viết cần có mô tả.';
   if (!data.category) missing.category = 'Bài viết cần có chuyên mục.';
   if (!data.authorName) missing.authorName = 'Bài viết cần có tác giả.';
   if (!data.content || !data.content.trim()) missing.content = 'Bài viết cần có nội dung.';
@@ -53,16 +54,17 @@ function assertPublishable(data) {
   }
 }
 
+// Trang thông tin cố định (Giới thiệu, Dịch vụ…) không hiện trong danh sách quản trị: website chỉ có 4 danh mục bài viết
 export async function adminList({ status, category, q, skip, limit }) {
-  const filter = {};
+  const filter = { category: { $ne: 'TRANG' } };
   if (['DRAFT', 'PUBLISHED', 'HIDDEN'].includes(status)) filter.status = status;
-  if (category && POST_CATEGORIES[category]) filter.category = category;
+  if (category && category !== 'TRANG' && POST_CATEGORIES[category]) filter.category = category;
   if (q) filter.title = new RegExp(escapeRegex(q.trim()), 'i');
   const [items, total] = await Promise.all([
     Post.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit),
     Post.countDocuments(filter),
   ]);
-  const counts = await Post.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]);
+  const counts = await Post.aggregate([{ $match: { category: { $ne: 'TRANG' } } }, { $group: { _id: '$status', n: { $sum: 1 } } }]);
   const statusCounts = Object.fromEntries(['PUBLISHED', 'DRAFT', 'HIDDEN'].map((s) => [s, counts.find((c) => c._id === s)?.n || 0]));
   return { items: items.map((p) => postView(p, { full: false })), total, statusCounts };
 }
