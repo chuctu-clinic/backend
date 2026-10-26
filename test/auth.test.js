@@ -184,3 +184,19 @@ describe('Nhiều tab trên cùng trình duyệt', () => {
     assert.equal(res.body.error.code, 'SESSION_CHANGED');
   });
 });
+
+describe('Cập nhật thông tin tài khoản', () => {
+  it('ngày sinh, giới tính, địa chỉ là bắt buộc, không xoá trắng được', async () => {
+    const agent = await registerUser('0911000055');
+    const res = await agent.patch('/api/me').set('X-App', 'users').send({ dob: null, gender: null, address: '' }).expect(400);
+    assert.match(res.body.error.fields.dob, /ngày, tháng, năm sinh/);
+    assert.match(res.body.error.fields.gender, /giới tính/);
+    assert.match(res.body.error.fields.address, /địa chỉ/);
+    const ok = await agent
+      .patch('/api/me')
+      .set('X-App', 'users')
+      .send({ dob: '1955-04-12', gender: 'NU', address: '12 Nguyễn Văn Đậu, Phường 5, Quận Phú Nhuận, TP. Hồ Chí Minh' })
+      .expect(200);
+    assert.equal(ok.body.user.gender, 'NU');
+  });
+});

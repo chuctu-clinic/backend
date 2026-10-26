@@ -50,11 +50,17 @@ export const profileSchema = profileFields.refine((d) => d.dob || d.birthYear, {
 });
 export const profileUpdateSchema = profileFields.partial();
 
+// Ngày sinh, giới tính, địa chỉ là bắt buộc: gửi lên thì phải có giá trị, không xoá trắng được
 export const accountUpdateSchema = z.object({
   fullName: fullName.optional(),
-  dob: pastDate.optional().nullable(),
-  gender: gender.optional().nullable(),
-  address: optionalText(300),
+  dob: z.custom((v) => typeof v === 'string' && v !== '', 'Vui lòng chọn đủ ngày, tháng, năm sinh.').pipe(pastDate).optional(),
+  gender: gender.optional(),
+  address: z
+    .string({ invalid_type_error: 'Vui lòng nhập địa chỉ.' })
+    .trim()
+    .min(1, 'Vui lòng nhập địa chỉ.')
+    .max(300, 'Tối đa 300 ký tự.')
+    .optional(),
 });
 
 export const bookingSchema = z.object({
