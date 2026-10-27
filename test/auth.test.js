@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { app, registerUser, request, reset, setup, staffAgent, teardown } from './helpers.js';
-import { VerificationCode } from '../src/models/index.js';
+import jwt from 'jsonwebtoken';
+import { config } from '../src/config.js';
+import { User, VerificationCode } from '../src/models/index.js';
 
 before(setup);
 after(teardown);
@@ -82,9 +84,9 @@ describe('Đăng ký và đăng nhập người dùng', () => {
 
   it('người dùng không có quyền vào khu vực tiếp tân (QAs1)', async () => {
     const agent = await registerUser('0911000005');
-    // Phiên người dùng không được đọc ở API nội bộ, nên coi như chưa đăng nhập khu nội bộ
-    await agent.get('/api/staff/patients').expect(401);
-    await agent.get('/api/admin/accounts').expect(401);
+    // Một phiên chung: đã đăng nhập nhưng vai trò USER thì bị từ chối quyền
+    await agent.get('/api/staff/patients').expect(403);
+    await agent.get('/api/admin/accounts').expect(403);
   });
 });
 
@@ -134,26 +136,48 @@ describe('Tài khoản nội bộ', () => {
   });
 });
 
-describe('Phiên trang người dùng và khu nội bộ độc lập', () => {
-  it('đăng nhập bên này không làm bên kia thoát, đăng xuất bên nào chỉ thoát bên đó', async () => {
-    const agent = await registerUser('0911000099', 'Người dùng hai phiên');
-    await agent.post('/api/auth/staff/login').send({ identifier: 'letan@chuctu.vn', password: 'ChucTu@2026' }).expect(200);
+describe('Một phiên đăng nhập cho cả hai khu', () => {
+  const letanToken = async () => {
+    const u = await User.findOne({ email: 'letan@chuctu.vn' });
+    return jwt.sign({ sub: u._id.toString(), role: u.role }, config.jwtSecret);
+  };
 
-    const asUser = await agent.get('/api/auth/me').set('X-App', 'users').expect(200);
-    assert.equal(asUser.body.user.role, 'USER');
-    const asStaff = await agent.get('/api/auth/me').set('X-App', 'staff').expect(200);
-    assert.equal(asStaff.body.user.role, 'RECEPTIONIST');
+  it('đăng nhập nội bộ thay phiên khách', async () => {
+    const agent = await registerUser('0911000099', 'Người dùng một phiên');
     await agent.get('/api/me/patients').expect(200);
+    await agent.post('/api/auth/staff/login').send({ identifier: 'letan@chuctu.vn', password: 'ChucTu@2026' }).expect(200);
+    const me = await agent.get('/api/auth/me').expect(200);
+    assert.equal(me.body.user.role, 'RECEPTIONIST');
+    await agent.get('/api/me/patients').expect(403);
     await agent.get('/api/staff/queue').expect(200);
+  });
 
-    await agent.post('/api/auth/logout').set('X-App', 'staff').expect(200);
+  it('đăng xuất thoát phiên duy nhất', async () => {
+    const agent = await staffAgent();
+    await agent.post('/api/auth/logout').expect(200);
     await agent.get('/api/staff/queue').expect(401);
-    await agent.get('/api/me/patients').expect(200);
+    const me = await agent.get('/api/auth/me').expect(200);
+    assert.equal(me.body.user, null);
+  });
 
-    await agent.post('/api/auth/staff/login').send({ identifier: 'letan@chuctu.vn', password: 'ChucTu@2026' }).expect(200);
-    await agent.post('/api/auth/logout').set('X-App', 'users').expect(200);
-    await agent.get('/api/me/patients').expect(401);
-    await agent.get('/api/staff/queue').expect(200);
+  it('X-App bị bỏ qua', async () => {
+    const agent = await staffAgent();
+    const me = await agent.get('/api/auth/me').set('X-App', 'users').expect(200);
+    assert.equal(me.body.user.role, 'RECEPTIONIST');
+  });
+
+  it('cookie ct_staff cũ được chuyển thành ct_session', async () => {
+    const res = await request(app).get('/api/staff/queue').set('Cookie', `ct_staff=${await letanToken()}`).expect(200);
+    const cookies = res.headers['set-cookie'].join('\n');
+    assert.match(cookies, /ct_session=[^;]+/);
+    assert.match(cookies, /ct_staff=;/);
+  });
+
+  it('ct_session hỏng thì xoá cả hai, không dùng ct_staff', async () => {
+    await request(app)
+      .get('/api/staff/queue')
+      .set('Cookie', `ct_session=rac; ct_staff=${await letanToken()}`)
+      .expect(401);
   });
 });
 
@@ -171,15 +195,15 @@ describe('Nhiều tab trên cùng trình duyệt', () => {
     const res = await agent.get('/api/staff/queue').set('X-Session-User', idA).expect(409);
     assert.equal(res.body.error.code, 'SESSION_CHANGED');
     // Tab vẫn xem được phiên hiện tại để tự tải lại
-    const me = await agent.get('/api/auth/me').set('X-App', 'staff').set('X-Session-User', idA).expect(200);
+    const me = await agent.get('/api/auth/me').set('X-Session-User', idA).expect(200);
     assert.equal(me.body.user.id, b.body.user.id);
     await agent.get('/api/staff/queue').set('X-Session-User', b.body.user.id).expect(200);
   });
 
   it('từ chối thao tác của tab khác sau khi đã đăng xuất', async () => {
     const agent = await staffAgent();
-    const me = await agent.get('/api/auth/me').set('X-App', 'staff').expect(200);
-    await agent.post('/api/auth/logout').set('X-App', 'staff').expect(200);
+    const me = await agent.get('/api/auth/me').expect(200);
+    await agent.post('/api/auth/logout').expect(200);
     const res = await agent.get('/api/staff/queue').set('X-Session-User', me.body.user.id).expect(409);
     assert.equal(res.body.error.code, 'SESSION_CHANGED');
   });
@@ -188,13 +212,13 @@ describe('Nhiều tab trên cùng trình duyệt', () => {
 describe('Cập nhật thông tin tài khoản', () => {
   it('ngày sinh, giới tính, địa chỉ là bắt buộc, không xoá trắng được', async () => {
     const agent = await registerUser('0911000055');
-    const res = await agent.patch('/api/me').set('X-App', 'users').send({ dob: null, gender: null, address: '' }).expect(400);
+    const res = await agent.patch('/api/me').send({ dob: null, gender: null, address: '' }).expect(400);
     assert.match(res.body.error.fields.dob, /ngày, tháng, năm sinh/);
     assert.match(res.body.error.fields.gender, /giới tính/);
     assert.match(res.body.error.fields.address, /địa chỉ/);
     const ok = await agent
       .patch('/api/me')
-      .set('X-App', 'users')
+      
       .send({ dob: '1955-04-12', gender: 'NU', address: '12 Nguyễn Văn Đậu, Phường 5, Quận Phú Nhuận, TP. Hồ Chí Minh' })
       .expect(200);
     assert.equal(ok.body.user.gender, 'NU');

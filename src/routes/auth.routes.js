@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { rules } from '../config.js';
-import { DEVICE_COOKIE, appOf, clearSession, requireAuth, setDeviceCookie, setSession } from '../middleware/auth.js';
+import { DEVICE_COOKIE, clearSession, requireAuth, setDeviceCookie, setSession } from '../middleware/auth.js';
 import * as auth from '../services/auth.service.js';
 import { ah, badRequest } from '../utils/errors.js';
 import { dateStr, fullName, gender, optionalText, parse, phone } from '../utils/validate.js';
@@ -104,7 +104,7 @@ router.post(
       req.body,
     );
     const user = await auth.staffLogin(identifier, password);
-    setSession(res, user, { app: 'staff' });
+    setSession(res, user);
     res.json({ user: user.toPublic() });
   }),
 );
@@ -127,7 +127,7 @@ router.post(
 );
 
 router.post('/logout', (req, res) => {
-  clearSession(res, appOf(req));
+  clearSession(res);
   res.json({ ok: true });
 });
 
