@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { ACTIVE_STATUSES, APPOINTMENT_STATUSES, SERVICE_TYPES } from '@chuctu/shared/constants.js';
+import { ACTIVE_STATUSES, APPOINTMENT_STATUSES, SERVICE_TYPES } from '../shared/constants.js';
 
 export { ACTIVE_STATUSES, APPOINTMENT_STATUSES, SERVICE_TYPES };
 

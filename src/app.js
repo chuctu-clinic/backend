@@ -1,6 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
@@ -29,24 +26,8 @@ export function createApp() {
   app.use('/api/me', meRoutes);
   app.use('/api/staff', staffRoutes);
   app.use('/api/admin', adminRoutes);
-  app.use('/api', notFoundHandler);
-
-  // Khi đã build giao diện thì server phục vụ luôn, triển khai được thành một dịch vụ:
-  // client/client-admin/dist ở /noi-bo/ (tiếp tân, Admin), client/client-users/dist ở / (khách)
-  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-  const adminDist = path.join(root, 'client/client-admin/dist');
-  const userDist = path.join(root, 'client/client-users/dist');
-  app.get(['/quan-tri', '/quan-tri/*'], (req, res) => res.redirect(301, `/noi-bo${req.originalUrl}`)); // đường dẫn cũ
-  if (fs.existsSync(adminDist)) {
-    // Router không phân biệt dấu "/" cuối, nên tự kiểm tra để khỏi chuyển hướng vòng lặp
-    app.get('/noi-bo', (req, res, next) => (req.originalUrl.split('?')[0] === '/noi-bo' ? res.redirect(301, req.originalUrl.replace('/noi-bo', '/noi-bo/')) : next()));
-    app.use('/noi-bo', express.static(adminDist, { index: false, maxAge: '1h' }));
-    app.get('/noi-bo/*', (req, res) => res.sendFile(path.join(adminDist, 'index.html')));
-  }
-  if (fs.existsSync(userDist)) {
-    app.use(express.static(userDist, { index: false, maxAge: '1h' }));
-    app.get('*', (req, res) => res.sendFile(path.join(userDist, 'index.html')));
-  }
+  // Giao diện nằm ở repo frontend, server chỉ phục vụ API
+  app.use(notFoundHandler);
 
   app.use(errorHandler);
   return app;

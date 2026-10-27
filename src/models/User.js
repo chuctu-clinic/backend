@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { GENDERS, ROLES, STAFF_ROLES } from '@chuctu/shared/constants.js';
+import { GENDERS, ROLES, STAFF_ROLES } from '../shared/constants.js';
 
 export { ROLES, STAFF_ROLES };
 

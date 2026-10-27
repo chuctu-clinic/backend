@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { badRequest } from './errors.js';
 import { isDateStr } from './time.js';
-import { normalizePhone, phoneProblem } from '@chuctu/shared/phone.js';
+import { normalizePhone, phoneProblem } from '../shared/phone.js';
 
 /** Kiểm tra dữ liệu theo schema zod; lỗi trả về theo từng trường để giao diện hiện ngay dưới ô nhập. */
 export function parse(schema, data) {

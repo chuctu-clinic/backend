@@ -1,5 +1,5 @@
 import { rules } from '../config.js';
-import { STATUS_LABELS } from '@chuctu/shared/constants.js';
+import { STATUS_LABELS } from '../shared/constants.js';
 import {
   ACTIVE_STATUSES,
   Appointment,

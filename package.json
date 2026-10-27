@@ -1,9 +1,13 @@
 {
-  "name": "server",
+  "name": "chuctu-clinic-backend",
   "private": true,
   "version": "1.0.0",
+  "description": "API Phòng khám Chúc Từ (Node.js + Express + MongoDB)",
   "type": "module",
   "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "node --watch src/index.js",
     "dev:demo": "node --watch src/index.js --demo",
@@ -12,7 +16,6 @@
     "test": "node --test --test-concurrency=1 \"test/*.test.js\""
   },
   "dependencies": {
-    "@chuctu/shared": "1.0.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

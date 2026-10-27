@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { config, rules } from '../config.js';
 import { TrustedDevice, User, VerificationCode, STAFF_ROLES } from '../models/index.js';
 import { badRequest, conflict, forbidden, notFound, tooMany, unauthorized } from '../utils/errors.js';
-import { normalizePhone } from '@chuctu/shared/phone.js';
+import { normalizePhone } from '../shared/phone.js';
 import { exposeCodeForDev, firebaseVerifier, sendVerificationCode, usesFirebase } from './smsGateway.js';
 import { createPatient } from './patient.service.js';
 

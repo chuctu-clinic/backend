@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { GENDERS, RELATIONSHIPS as RELATIONSHIP_LABELS } from '@chuctu/shared/constants.js';
+import { GENDERS, RELATIONSHIPS as RELATIONSHIP_LABELS } from '../shared/constants.js';
 
 export const RELATIONSHIPS = Object.keys(RELATIONSHIP_LABELS);
 
