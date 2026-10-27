@@ -122,5 +122,5 @@ Thử không tốn tiền, không gửi SMS thật:
 ### Việc còn lại
 
 - **Nhà cung cấp SMS khi chạy thật**: Firebase dùng để thử nghiệm. Khi chạy thật nên cân nhắc nhà cung cấp SMS trong nước có tên người gửi (brandname), chỉ cần thêm một provider trong `src/services/smsGateway.js`.
-- **Nơi triển khai**: chưa chọn, chưa có CI/CD. Bản CI/CD lên GHCR + Render cũ còn ở nhánh `ban-typescript-cu`.
+- **Nơi triển khai**: chưa chọn, chưa có CI/CD.
 - **Giới hạn số lần thử đăng nhập nội bộ**: chưa có.
