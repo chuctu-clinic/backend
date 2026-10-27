@@ -16,9 +16,11 @@ const registerSchema = z.object({
   gender,
   address: optionalText(300),
 });
+// Xác nhận số điện thoại bằng mã 6 số (server tự gửi) hoặc ID token Firebase (SMS_PROVIDER=firebase)
 const codeSchema = z.object({
   phone,
-  code: z.string({ required_error: 'Cô chú vui lòng nhập mã xác nhận.' }).regex(/^\d{6}$/, 'Mã xác nhận gồm 6 chữ số.'),
+  code: z.string().regex(/^\d{6}$/, 'Mã xác nhận gồm 6 chữ số.').optional(),
+  idToken: z.string().min(20).max(4096).optional(),
   remember: z.boolean().optional().default(true),
 });
 
@@ -49,8 +51,8 @@ router.post(
 router.post(
   '/register/verify',
   ah(async (req, res) => {
-    const { phone: p, code } = parse(codeSchema, req.body);
-    const user = await auth.completeRegister(p, code);
+    const { phone: p, code, idToken } = parse(codeSchema, req.body);
+    const user = await auth.completeRegister(p, { code, idToken });
     await rememberDevice(req, res, user);
     setSession(res, user);
     res.status(201).json({ user: user.toPublic() });
@@ -73,8 +75,8 @@ router.post(
 router.post(
   '/login/verify',
   ah(async (req, res) => {
-    const { phone: p, code, remember } = parse(codeSchema, req.body);
-    const user = await auth.completeLogin(p, code);
+    const { phone: p, code, idToken, remember } = parse(codeSchema, req.body);
+    const user = await auth.completeLogin(p, { code, idToken });
     if (remember) await rememberDevice(req, res, user);
     setSession(res, user, { remember });
     res.json({ user: user.toPublic() });

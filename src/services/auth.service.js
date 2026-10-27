@@ -3,7 +3,8 @@ import bcrypt from 'bcryptjs';
 import { config, rules } from '../config.js';
 import { TrustedDevice, User, VerificationCode, STAFF_ROLES } from '../models/index.js';
 import { badRequest, conflict, forbidden, notFound, tooMany, unauthorized } from '../utils/errors.js';
-import { exposeCodeForDev, sendVerificationCode } from './smsGateway.js';
+import { normalizePhone } from '@chuctu/shared/phone.js';
+import { exposeCodeForDev, firebaseVerifier, sendVerificationCode, usesFirebase } from './smsGateway.js';
 import { createPatient } from './patient.service.js';
 
 const hmac = (value) => crypto.createHmac('sha256', config.jwtSecret).update(value).digest('hex');
@@ -45,19 +46,22 @@ export async function issueCode(phone, purpose, registerData = null) {
     { $set: { expiresAt: new Date(now) } },
   );
 
-  const code = randomCode();
+  // Firebase: trình duyệt tự gửi mã; ở đây chỉ ghi nhận lần xin mã (để giữ giới hạn và đối chiếu khi xác nhận)
+  const firebase = usesFirebase();
+  const code = firebase ? null : randomCode();
   await VerificationCode.create({
     phone,
     purpose,
-    codeHash: hashCode(phone, purpose, code),
+    codeHash: firebase ? 'firebase' : hashCode(phone, purpose, code),
     registerData,
     expiresAt: new Date(now + rules.otp.ttlMinutes * 60_000),
     createdAt: new Date(now),
   });
-  await sendVerificationCode(phone, code, purpose);
+  if (!firebase) await sendVerificationCode(phone, code, purpose);
 
   return {
     sent: true,
+    provider: firebase ? 'firebase' : 'server',
     expiresInSeconds: rules.otp.ttlMinutes * 60,
     resendAfterSeconds: rules.otp.resendSeconds,
     ...(exposeCodeForDev() ? { devCode: code } : {}),
@@ -96,6 +100,41 @@ export async function verifyCode(phone, purpose, code) {
   return used;
 }
 
+/**
+ * Firebase: kiểm ID token trình duyệt nhận được sau khi nhập đúng mã. Token phải đúng số điện thoại,
+ * vừa mới xác thực, và có lần xin mã tương ứng còn hạn, chưa dùng (mỗi lần xin mã chỉ dùng được một lần).
+ */
+async function verifyFirebase(phone, purpose, idToken) {
+  if (!idToken) throw badRequest('Cô chú vui lòng nhập mã xác nhận.', { fields: { code: 'Cô chú vui lòng nhập mã xác nhận.' } }, 'CODE_REQUIRED');
+  let info;
+  try {
+    info = await firebaseVerifier.verify(idToken);
+  } catch {
+    throw badRequest('Phòng khám chưa xác nhận được mã. Cô chú bấm "Gửi lại mã" rồi thử lại.', null, 'TOKEN_INVALID');
+  }
+  if (!info.phone || normalizePhone(info.phone) !== phone) {
+    throw badRequest('Mã xác nhận không thuộc số điện thoại này.', null, 'PHONE_MISMATCH');
+  }
+  const now = new Date();
+  if (!info.authTime || now - info.authTime > (rules.otp.ttlMinutes + 1) * 60_000) {
+    throw badRequest('Mã xác nhận đã hết hạn. Cô chú bấm "Gửi lại mã" để nhận mã mới.', null, 'CODE_EXPIRED');
+  }
+  const used = await VerificationCode.findOneAndUpdate(
+    { phone, purpose, usedAt: null, expiresAt: { $gt: now } },
+    { $set: { usedAt: now } },
+    { sort: { createdAt: -1 }, new: true },
+  );
+  if (!used) throw badRequest('Mã xác nhận đã hết hạn. Cô chú bấm "Gửi lại mã" để nhận mã mới.', null, 'CODE_EXPIRED');
+  return used;
+}
+
+/** Bằng chứng giữ số điện thoại: mã 6 số (server tự gửi) hoặc ID token Firebase. */
+function verifyProof(phone, purpose, { code, idToken } = {}) {
+  if (usesFirebase()) return verifyFirebase(phone, purpose, idToken);
+  if (!code) throw badRequest('Cô chú vui lòng nhập mã xác nhận.', { fields: { code: 'Mã xác nhận gồm 6 chữ số.' } }, 'CODE_REQUIRED');
+  return verifyCode(phone, purpose, code);
+}
+
 // ---------- Người dùng: đăng ký ----------
 
 export async function startRegister(data) {
@@ -108,8 +147,8 @@ export async function startRegister(data) {
   return issueCode(data.phone, 'REGISTER', data);
 }
 
-export async function completeRegister(phone, code) {
-  const doc = await verifyCode(phone, 'REGISTER', code);
+export async function completeRegister(phone, proof) {
+  const doc = await verifyProof(phone, 'REGISTER', proof);
   const data = doc.registerData;
   if (!data) throw badRequest('Không tìm thấy thông tin đăng ký. Cô chú vui lòng đăng ký lại.');
   if (await User.exists({ phone })) throw conflict('Số điện thoại này đã có tài khoản.', 'PHONE_TAKEN');
@@ -177,9 +216,9 @@ export async function startLogin(phone, deviceId) {
   return { user: null, needCode: true, otp };
 }
 
-export async function completeLogin(phone, code) {
+export async function completeLogin(phone, proof) {
   const user = await findLoginUser(phone);
-  await verifyCode(phone, 'NEW_DEVICE', code);
+  await verifyProof(phone, 'NEW_DEVICE', proof);
   user.lastLoginAt = new Date();
   await user.save();
   return user;

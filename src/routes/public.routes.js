@@ -3,6 +3,7 @@ import { rules } from '../config.js';
 import { POST_CATEGORIES, RELATIONSHIPS, SERVICE_TYPES } from '../models/index.js';
 import { COUNTER_CANCEL_REASONS, STATUS_LABELS } from '../services/appointment.service.js';
 import * as posts from '../services/post.service.js';
+import { firebaseWebConfig, usesFirebase } from '../services/smsGateway.js';
 import * as uploads from '../services/upload.service.js';
 import { ah } from '../utils/errors.js';
 import { paging } from '../utils/validate.js';
@@ -14,6 +15,8 @@ const router = Router();
 router.get('/meta', (req, res) => {
   res.json({
     today: todayVN(),
+    // Cách gửi mã xác nhận: "firebase" thì giao diện tự gửi qua Firebase với cấu hình này
+    otp: { provider: usesFirebase() ? 'firebase' : 'server', firebase: firebaseWebConfig() },
     serviceTypes: Object.entries(SERVICE_TYPES).map(([value, label]) => ({ value, label })),
     slots: rules.booking.slots,
     slotCapacity: rules.booking.slotCapacity,
