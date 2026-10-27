@@ -54,6 +54,9 @@ export const rules = {
   minPasswordLength: 8,
 };
 
-if (config.isProd && config.jwtSecret === 'dev-secret-chuc-tu') {
-  throw new Error('JWT_SECRET phải được đặt khi chạy production');
+// Khoá ký phiên và băm mã xác nhận: khi production không được dùng giá trị mặc định, chuỗi mẫu trong
+// .env.example / docker-compose.yml (ai đọc mã nguồn cũng biết) hay chuỗi quá ngắn.
+const KNOWN_SECRETS = ['dev-secret-chuc-tu', 'doi-chuoi-nay-khi-trien-khai'];
+if (config.isProd && (KNOWN_SECRETS.includes(config.jwtSecret) || config.jwtSecret.length < 32)) {
+  throw new Error('JWT_SECRET phải là chuỗi ngẫu nhiên riêng, dài ít nhất 32 ký tự khi chạy production');
 }
