@@ -110,6 +110,8 @@ router.post(
       z.object({ patientId: objectId, serviceType, slotDate: dateStr, slotStart, checkInNow: z.boolean().optional() }),
       req.body,
     );
+    // Ngoài giờ nhận bệnh thì báo trước, không tạo phiếu rồi mới lỗi ở bước check-in
+    if (data.checkInNow) queue.assertReceivingTime();
     const appt = await appts.counterBook(req.user, data);
     if (data.checkInNow) await queue.checkIn(req.user, appt._id);
     res.status(201).json({ appointment: await appts.getStaffAppointment(appt._id) });

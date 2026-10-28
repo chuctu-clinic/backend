@@ -1,7 +1,8 @@
 import { rules } from '../config.js';
 import { Appointment, Checkin, Patient, getSetting, setSetting } from '../models/index.js';
+import { RECEIVING_HOURS } from '../shared/constants.js';
 import { conflict, forbidden, notFound } from '../utils/errors.js';
-import { hhmmToMinutes, slotDateStr, slotDateValue, slotInstant, toDateStr, todayVN } from '../utils/time.js';
+import { clock, hhmmToMinutes, minutesOfDayVN, slotDateStr, slotDateValue, slotInstant, toDateStr, todayVN } from '../utils/time.js';
 
 const AUTO_KEY = 'queue.autoInvite';
 const { seats } = rules.queue;
@@ -26,7 +27,19 @@ export function priorityGroupFor(appt, checkInTime) {
 
 // ---------- Check-in ----------
 
-export async function checkIn(staff, appointmentId, now = new Date()) {
+/** Đang trong giờ nhận bệnh (giờ Việt Nam): từ giờ mở cửa đến trước giờ đóng cửa. */
+export function isReceivingTime(now = clock.now()) {
+  const m = minutesOfDayVN(now);
+  return m >= hhmmToMinutes(RECEIVING_HOURS.open) && m < hhmmToMinutes(RECEIVING_HOURS.close);
+}
+
+export function assertReceivingTime(now = clock.now()) {
+  if (!isReceivingTime(now)) {
+    throw conflict(`Ngoài giờ nhận bệnh (${RECEIVING_HOURS.label}) nên không check-in được.`, 'CLOSED');
+  }
+}
+
+export async function checkIn(staff, appointmentId, now = clock.now()) {
   const appt = await Appointment.findById(appointmentId);
   if (!appt) throw notFound('Không tìm thấy phiếu khám.');
   if (appt.status === 'CANCELLED') throw conflict('Phiếu khám đã huỷ nên không check-in được.', 'CANCELLED');
@@ -35,6 +48,7 @@ export async function checkIn(staff, appointmentId, now = new Date()) {
   if (slotDateStr(appt.slotDate) !== today) {
     throw conflict('Phiếu khám không thuộc ngày hôm nay. Đổi giờ khám sang hôm nay trước khi check-in.', 'WRONG_DAY');
   }
+  assertReceivingTime(now);
   const patient = await Patient.findById(appt.patientId);
   if (patient?.isLocked) throw forbidden('Hồ sơ đang bị khoá nên không ghi nhận lượt khám mới.');
 

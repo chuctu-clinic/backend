@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { after, before, beforeEach, describe, it } from 'node:test';
-import { reset, setup, staffAgent, teardown } from './helpers.js';
+import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
+import { DEFAULT_NOW, reset, setup, staffAgent, teardown } from './helpers.js';
 import { Appointment, Checkin, MedicalRecord, Patient, User } from '../src/models/index.js';
-import { priorityGroupFor } from '../src/services/queue.service.js';
-import { slotDateValue, slotInstant, todayVN } from '../src/utils/time.js';
+import { isReceivingTime, priorityGroupFor } from '../src/services/queue.service.js';
+import { clock, slotDateValue, slotInstant, todayVN } from '../src/utils/time.js';
 
 before(setup);
 after(teardown);
@@ -28,6 +28,37 @@ async function todayAppointment(name, { source = 'ONLINE', start = '08:00' } = {
     createdAt: new Date(Date.now() - 3 * 86400_000),
   });
 }
+
+describe('Giờ nhận bệnh 8:00 – 16:30', () => {
+  const today = (hhmm) => slotInstant(todayVN(), hhmm);
+  afterEach(() => {
+    clock.now = DEFAULT_NOW;
+  });
+
+  it('chỉ trong giờ nhận bệnh mới là giờ check-in', () => {
+    assert.equal(isReceivingTime(today('07:59')), false);
+    assert.equal(isReceivingTime(today('08:00')), true);
+    assert.equal(isReceivingTime(today('16:29')), true);
+    assert.equal(isReceivingTime(today('16:30')), false);
+    assert.equal(isReceivingTime(today('22:00')), false);
+  });
+
+  it('ngoài giờ nhận bệnh không check-in được, phiếu vẫn Chưa đến', async () => {
+    const staff = await staffAgent();
+    const a = await todayAppointment('Ngoài Giờ');
+    for (const hhmm of ['22:00', '07:30', '16:30']) {
+      clock.now = () => today(hhmm);
+      const res = await staff.post(`/api/staff/appointments/${a._id}/checkin`).expect(409);
+      assert.equal(res.body.error.code, 'CLOSED');
+      assert.match(res.body.error.message, /8:00 – 16:30/);
+    }
+    assert.equal((await Appointment.findById(a._id)).status, 'BOOKED');
+    assert.equal(await Checkin.countDocuments({ appointmentId: a._id }), 0);
+
+    clock.now = () => today('16:29');
+    await staff.post(`/api/staff/appointments/${a._id}/checkin`).expect(200);
+  });
+});
 
 describe('Nhóm ưu tiên trong hàng chờ (BR.28)', () => {
   const appt = (source, createdAt) => ({ slotDate: slotDateValue('2026-10-20'), slotStart: '09:00', source, createdAt });

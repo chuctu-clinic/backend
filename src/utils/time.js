@@ -4,6 +4,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 const pad = (n) => String(n).padStart(2, '0');
 
+/** Đồng hồ của các quy tắc theo giờ (check-in trong giờ nhận bệnh). Kiểm thử thay now() để cố định thời điểm. */
+export const clock = { now: () => new Date() };
+
 /** Ngày hiện tại theo giờ Việt Nam, dạng YYYY-MM-DD. */
 export function todayVN(now = new Date()) {
   return toDateStr(now);
