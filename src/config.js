@@ -42,7 +42,8 @@ export const rules = {
   otp: {
     length: 6,
     ttlMinutes: 5,
-    maxPerHour: 3,
+    maxPerHour: 3, // tin nhắn, cho mỗi số điện thoại
+    emailMaxPerHour: 5, // email, cho mỗi địa chỉ email
     resendSeconds: 60,
     maxAttempts: 5,
   },

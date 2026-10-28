@@ -1,10 +1,12 @@
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { config, rules } from '../config.js';
 import { TrustedDevice, User, VerificationCode, STAFF_ROLES } from '../models/index.js';
 import { badRequest, conflict, forbidden, notFound, tooMany, unauthorized } from '../utils/errors.js';
 import { normalizePhone } from '../shared/phone.js';
 import { exposeCodeForDev, firebaseVerifier, sendVerificationCode, usesFirebase } from './smsGateway.js';
+import { devFixedEmailCode, exposeEmailCodeForDev, sendEmailCode } from './emailGateway.js';
 import { createPatient } from './patient.service.js';
 
 const hmac = (value) => crypto.createHmac('sha256', config.jwtSecret).update(value).digest('hex');
@@ -16,14 +18,19 @@ function randomCode() {
   return String(crypto.randomInt(0, 10 ** rules.otp.length)).padStart(rules.otp.length, '0');
 }
 
-/** Gửi mã xác nhận, áp dụng giới hạn 3 mã mỗi giờ và chờ 60 giây giữa hai lần gửi (BR.03). */
-export async function issueCode(phone, purpose, registerData = null) {
+/**
+ * Gửi mã xác nhận, chờ 60 giây giữa hai lần gửi cùng loại mã (BR.03).
+ * Mã luôn gắn với số điện thoại của tài khoản; có `email` thì gửi mã tới email đó thay vì tin nhắn.
+ * Giới hạn mỗi giờ tính riêng: tin nhắn 3 mã cho mỗi số điện thoại, email 5 mã cho mỗi địa chỉ email.
+ */
+export async function issueCode(phone, purpose, registerData = null, { email = null } = {}) {
   const now = Date.now();
-  const recent = await VerificationCode.find({ phone, createdAt: { $gte: new Date(now - 3600_000) } })
+  const since = { $gte: new Date(now - 3600_000) };
+  const recent = await VerificationCode.find(email ? { email, createdAt: since } : { phone, email: null, createdAt: since })
     .sort({ createdAt: -1 })
     .lean();
+  const maxPerHour = email ? rules.otp.emailMaxPerHour : rules.otp.maxPerHour;
 
-  // Chờ 60 giây áp dụng cho việc gửi lại cùng một loại mã; giới hạn 3 mã mỗi giờ tính chung cho số điện thoại
   const lastSamePurpose = recent.find((c) => c.purpose === purpose);
   if (lastSamePurpose) {
     const waitSec = Math.ceil((lastSamePurpose.createdAt.getTime() + rules.otp.resendSeconds * 1000 - now) / 1000);
@@ -31,11 +38,11 @@ export async function issueCode(phone, purpose, registerData = null) {
       throw tooMany(`Cô chú vui lòng chờ ${waitSec} giây rồi bấm gửi lại mã.`, { retryAfter: waitSec });
     }
   }
-  if (recent.length >= rules.otp.maxPerHour) {
+  if (recent.length >= maxPerHour) {
     const oldest = recent[recent.length - 1].createdAt.getTime();
     const waitMin = Math.ceil((oldest + 3600_000 - now) / 60_000);
     throw tooMany(
-      `Số điện thoại này đã nhận đủ ${rules.otp.maxPerHour} mã trong một giờ. Cô chú vui lòng thử lại sau khoảng ${waitMin} phút hoặc gọi phòng khám để được giúp.`,
+      `${email ? 'Email' : 'Số điện thoại'} này đã nhận đủ ${maxPerHour} mã trong một giờ. Cô chú vui lòng thử lại sau khoảng ${waitMin} phút hoặc gọi phòng khám để được giúp.`,
       { retryAfter: waitMin * 60 },
     );
   }
@@ -47,24 +54,32 @@ export async function issueCode(phone, purpose, registerData = null) {
   );
 
   // Firebase: trình duyệt tự gửi mã; ở đây chỉ ghi nhận lần xin mã (để giữ giới hạn và đối chiếu khi xác nhận)
-  const firebase = usesFirebase();
-  const code = firebase ? null : randomCode();
-  await VerificationCode.create({
+  const firebase = !email && usesFirebase();
+  const code = firebase ? null : (email && devFixedEmailCode()) || randomCode();
+  const doc = await VerificationCode.create({
     phone,
+    email,
     purpose,
     codeHash: firebase ? 'firebase' : hashCode(phone, purpose, code),
     registerData,
     expiresAt: new Date(now + rules.otp.ttlMinutes * 60_000),
     createdAt: new Date(now),
   });
-  if (!firebase) await sendVerificationCode(phone, code, purpose);
+  try {
+    if (email) await sendEmailCode(email, code, purpose);
+    else if (!firebase) await sendVerificationCode(phone, code, purpose);
+  } catch (err) {
+    // Gửi không được thì không tính lần xin mã này
+    await VerificationCode.deleteOne({ _id: doc._id });
+    throw err;
+  }
 
   return {
     sent: true,
     provider: firebase ? 'firebase' : 'server',
     expiresInSeconds: rules.otp.ttlMinutes * 60,
     resendAfterSeconds: rules.otp.resendSeconds,
-    ...(exposeCodeForDev() ? { devCode: code } : {}),
+    ...((email ? exposeEmailCodeForDev() : exposeCodeForDev()) ? { devCode: code } : {}),
   };
 }
 
@@ -266,3 +281,53 @@ export async function changePassword(userId, currentPassword, newPassword) {
 }
 
 export const hashPassword = (password) => bcrypt.hash(password, 10);
+
+// ---------- Nội bộ: quên mật khẩu (mã 6 số gửi qua email) ----------
+
+const RESET_MINUTES = 10;
+// Khoá riêng cho token đặt lại mật khẩu, để token này không dùng làm phiên đăng nhập được
+const resetKey = () => hmac('reset-password');
+// Dấu của mật khẩu hiện tại: đặt lại xong thì dấu đổi, token cũ hết dùng được
+const passwordStamp = (user) => hmac(`pw:${user.passwordHash}`).slice(0, 24);
+const resetExpired = () =>
+  badRequest('Phiên đặt lại mật khẩu đã hết hạn. Cô chú làm lại từ bước nhập email.', null, 'RESET_EXPIRED');
+
+async function activeStaffByEmail(email) {
+  const user = await User.findOne({ email }).select('+passwordHash');
+  return user && user.isActive && user.passwordHash && STAFF_ROLES.includes(user.role) ? user : null;
+}
+
+/** Gửi mã tới email. Không cho biết email có thuộc tài khoản nội bộ đang hoạt động hay không. */
+export async function startPasswordReset(email) {
+  const user = await activeStaffByEmail(email);
+  if (!user) {
+    return { sent: true, email, expiresInSeconds: rules.otp.ttlMinutes * 60, resendAfterSeconds: rules.otp.resendSeconds };
+  }
+  return { ...(await issueCode(user.phone, 'RESET_PASSWORD', null, { email })), email };
+}
+
+/** Mã đúng → token ngắn hạn để đặt mật khẩu mới. */
+export async function verifyPasswordReset(email, code) {
+  const user = await activeStaffByEmail(email);
+  if (!user) throw badRequest('Mã xác nhận đã hết hạn. Cô chú bấm "Gửi lại mã" để nhận mã mới.', null, 'CODE_EXPIRED');
+  await verifyCode(user.phone, 'RESET_PASSWORD', code);
+  const resetToken = jwt.sign({ sub: user._id.toString(), pw: passwordStamp(user) }, resetKey(), { expiresIn: `${RESET_MINUTES}m` });
+  return { resetToken, expiresInSeconds: RESET_MINUTES * 60 };
+}
+
+export async function resetPassword(resetToken, newPassword) {
+  let payload;
+  try {
+    payload = jwt.verify(resetToken, resetKey());
+  } catch {
+    throw resetExpired();
+  }
+  const user = await User.findById(payload.sub).select('+passwordHash');
+  if (!user || !user.isActive || !user.passwordHash || !STAFF_ROLES.includes(user.role) || payload.pw !== passwordStamp(user)) {
+    throw resetExpired();
+  }
+  user.passwordHash = await hashPassword(newPassword);
+  user.mustChangePassword = false;
+  await user.save();
+  return user;
+}
