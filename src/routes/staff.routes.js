@@ -6,13 +6,26 @@ import * as patients from '../services/patient.service.js';
 import * as queue from '../services/queue.service.js';
 import * as records from '../services/medicalRecord.service.js';
 import { ah } from '../utils/errors.js';
-import { dateStr, objectId, paging, parse } from '../utils/validate.js';
+import { dateStr, fullName, objectId, paging, parse } from '../utils/validate.js';
 import { todayVN } from '../utils/time.js';
 import { recordSchema, serviceType, slotStart, staffPatientSchema, staffPatientUpdateSchema } from './schemas.js';
 
 // Tiếp tân và Admin (BR.07, BR.23, BR.34). Admin có toàn quyền nên dùng chung các API này.
 const router = Router();
 router.use(requireStaff);
+
+// ---------- Thông tin tài khoản của chính mình ----------
+
+// Sửa họ tên. Số điện thoại là tên đăng nhập, vai trò do Admin cấp; đổi email đi qua bước xác minh bên dưới.
+router.patch(
+  '/account',
+  ah(async (req, res) => {
+    const data = parse(z.object({ fullName }), req.body);
+    req.user.fullName = data.fullName;
+    await req.user.save();
+    res.json({ user: req.user.toPublic() });
+  }),
+);
 
 // ---------- Lịch trong ngày (UC.7.1, UC.7.2) ----------
 

@@ -156,6 +156,32 @@ describe('Tài khoản nội bộ', () => {
     await user.post('/api/auth/change-password').send({ currentPassword: 'x', newPassword: 'MatKhauMoi456' }).expect(400);
   });
 
+  it('admin và tiếp tân tự sửa họ tên, không sửa được số điện thoại, email, vai trò', async () => {
+    for (const identifier of ['admin@chuctu.vn', 'letan@chuctu.vn']) {
+      const agent = await staffAgent(identifier);
+      const before = (await agent.get('/api/auth/me').expect(200)).body.user;
+      const res = await agent
+        .patch('/api/staff/account')
+        .send({ fullName: '  Tên Mới Sửa  ', phone: '0999999999', email: 'khac@chuctu.vn', role: 'USER' })
+        .expect(200);
+      assert.equal(res.body.user.fullName, 'Tên Mới Sửa');
+      assert.equal(res.body.user.phone, before.phone);
+      assert.equal(res.body.user.email, before.email);
+      assert.equal(res.body.user.role, before.role);
+    }
+  });
+
+  it('họ tên để trống thì báo lỗi theo trường', async () => {
+    const agent = await staffAgent();
+    const res = await agent.patch('/api/staff/account').send({ fullName: '   ' }).expect(400);
+    assert.ok(res.body.error.fields.fullName);
+  });
+
+  it('người dùng không sửa được qua API nội bộ', async () => {
+    const user = await registerUser('0911000008');
+    await user.patch('/api/staff/account').send({ fullName: 'Ai Đó' }).expect(403);
+  });
+
   it('mật khẩu tạm phải từ 8 ký tự', async () => {
     const admin = await staffAgent('admin@chuctu.vn');
     const res = await admin
