@@ -126,6 +126,36 @@ describe('Tài khoản nội bộ', () => {
     await agent.get('/api/staff/queue').expect(200);
   });
 
+  it('admin và tiếp tân tự đổi mật khẩu, mật khẩu cũ hết dùng được', async () => {
+    for (const identifier of ['admin@chuctu.vn', 'letan@chuctu.vn']) {
+      const agent = await staffAgent(identifier);
+      await agent.post('/api/auth/change-password').send({ currentPassword: 'ChucTu@2026', newPassword: 'MatKhauMoi456' }).expect(200);
+      await request(app).post('/api/auth/staff/login').send({ identifier, password: 'ChucTu@2026' }).expect(401);
+      await request(app).post('/api/auth/staff/login').send({ identifier, password: 'MatKhauMoi456' }).expect(200);
+    }
+  });
+
+  it('mật khẩu mới phải từ 8 ký tự', async () => {
+    const agent = await staffAgent();
+    const res = await agent.post('/api/auth/change-password').send({ currentPassword: 'ChucTu@2026', newPassword: '1234567' }).expect(400);
+    assert.match(res.body.error.fields.newPassword, /8 ký tự/);
+    await agent.post('/api/auth/change-password').send({ currentPassword: 'ChucTu@2026', newPassword: '12345678' }).expect(200);
+  });
+
+  it('đổi mật khẩu cần đúng mật khẩu hiện tại và mật khẩu mới phải khác', async () => {
+    const agent = await staffAgent();
+    let res = await agent.post('/api/auth/change-password').send({ currentPassword: 'sai-mat-khau', newPassword: 'MatKhauMoi456' }).expect(400);
+    assert.ok(res.body.error.fields.currentPassword);
+    res = await agent.post('/api/auth/change-password').send({ currentPassword: 'ChucTu@2026', newPassword: 'ChucTu@2026' }).expect(400);
+    assert.ok(res.body.error.fields.newPassword);
+  });
+
+  it('người dùng và khách chưa đăng nhập không đổi mật khẩu được', async () => {
+    await request(app).post('/api/auth/change-password').send({ currentPassword: 'x', newPassword: 'MatKhauMoi456' }).expect(401);
+    const user = await registerUser('0911000007');
+    await user.post('/api/auth/change-password').send({ currentPassword: 'x', newPassword: 'MatKhauMoi456' }).expect(400);
+  });
+
   it('mật khẩu tạm phải từ 8 ký tự', async () => {
     const admin = await staffAgent('admin@chuctu.vn');
     const res = await admin
