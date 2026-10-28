@@ -182,6 +182,17 @@ describe('Tài khoản nội bộ', () => {
     await user.patch('/api/staff/account').send({ fullName: 'Ai Đó' }).expect(403);
   });
 
+  it('admin sửa tên hoặc số điện thoại ở Quản lý tài khoản thì email giữ nguyên', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const me = (await admin.get('/api/auth/me').expect(200)).body.user;
+    const res = await admin.patch(`/api/admin/accounts/${me.id}`).send({ fullName: 'Admin', phone: me.phone }).expect(200);
+    assert.equal(res.body.account.fullName, 'Admin');
+    assert.equal(res.body.account.email, 'admin@chuctu.vn');
+    // Gửi email rỗng mới là xoá email
+    const cleared = await admin.patch(`/api/admin/accounts/${me.id}`).send({ email: '' }).expect(200);
+    assert.equal(cleared.body.account.email, null);
+  });
+
   it('mật khẩu tạm phải từ 8 ký tự', async () => {
     const admin = await staffAgent('admin@chuctu.vn');
     const res = await admin

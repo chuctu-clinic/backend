@@ -27,7 +27,8 @@ router.get(
 const email = z
   .union([z.string().trim().toLowerCase().email('Email chưa đúng định dạng.'), z.literal(''), z.null()])
   .optional()
-  .transform((v) => (v ? v : null));
+  // Không gửi email (undefined) thì giữ nguyên email cũ; gửi chuỗi rỗng hoặc null mới là xoá
+  .transform((v) => (v === undefined ? undefined : v || null));
 const role = z.enum(ROLES, { errorMap: () => ({ message: 'Vui lòng chọn vai trò.' }) });
 const tempPassword = z.string().min(rules.minPasswordLength, `Mật khẩu tạm cần tối thiểu ${rules.minPasswordLength} ký tự.`);
 
