@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireStaff } from '../middleware/auth.js';
 import * as appts from '../services/appointment.service.js';
+import * as auth from '../services/auth.service.js';
 import * as patients from '../services/patient.service.js';
 import * as queue from '../services/queue.service.js';
 import * as records from '../services/medicalRecord.service.js';
@@ -24,6 +25,33 @@ router.patch(
     req.user.fullName = data.fullName;
     await req.user.save();
     res.json({ user: req.user.toPublic() });
+  }),
+);
+
+// Đổi email: gửi mã tới email mới, nhập đúng mã thì mới lưu
+router.post(
+  '/account/email',
+  ah(async (req, res) => {
+    const { email } = parse(
+      z.object({
+        email: z
+          .string({ required_error: 'Vui lòng nhập email.' })
+          .trim()
+          .toLowerCase()
+          .min(1, 'Vui lòng nhập email.')
+          .email('Email chưa đúng, ví dụ ten@email.com.'),
+      }),
+      req.body,
+    );
+    res.json(await auth.startEmailChange(req.user, email));
+  }),
+);
+
+router.post(
+  '/account/email/verify',
+  ah(async (req, res) => {
+    const { code } = parse(z.object({ code: z.string().regex(/^\d{6}$/, 'Vui lòng nhập đủ 6 số.') }), req.body);
+    res.json({ user: (await auth.confirmEmailChange(req.user, code)).toPublic() });
   }),
 );
 

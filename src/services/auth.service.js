@@ -331,3 +331,28 @@ export async function resetPassword(resetToken, newPassword) {
   await user.save();
   return user;
 }
+
+// ---------- Nội bộ: đổi email (mã 6 số gửi tới email mới) ----------
+
+const emailTaken = () =>
+  conflict('Email này đã dùng cho tài khoản khác.', 'EMAIL_TAKEN', { fields: { email: 'Email này đã dùng cho tài khoản khác.' } });
+
+/** Gửi mã tới email mới; email chỉ đổi sau khi nhập đúng mã. */
+export async function startEmailChange(user, email) {
+  if (email === user.email) {
+    throw badRequest('Email mới trùng với email đang dùng.', { fields: { email: 'Email mới trùng với email đang dùng.' } });
+  }
+  if (await User.exists({ email, _id: { $ne: user._id } })) throw emailTaken();
+  return { ...(await issueCode(user.phone, 'CHANGE_EMAIL', { email }, { email })), email };
+}
+
+export async function confirmEmailChange(user, code) {
+  const doc = await verifyCode(user.phone, 'CHANGE_EMAIL', code);
+  const email = doc.registerData?.email;
+  if (!email) throw badRequest('Mã xác nhận đã hết hạn. Cô chú bấm "Gửi lại mã" để nhận mã mới.', null, 'CODE_EXPIRED');
+  // Trong lúc chờ mã, email có thể đã được gán cho tài khoản khác
+  if (await User.exists({ email, _id: { $ne: user._id } })) throw emailTaken();
+  user.email = email;
+  await user.save();
+  return user;
+}
