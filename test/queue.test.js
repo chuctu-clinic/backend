@@ -3,7 +3,8 @@ import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 import { DEFAULT_NOW, reset, setup, staffAgent, teardown } from './helpers.js';
 import { Appointment, Checkin, MedicalRecord, Patient, User } from '../src/models/index.js';
 import { isReceivingTime, priorityGroupFor } from '../src/services/queue.service.js';
-import { clock, slotDateValue, slotInstant, todayVN } from '../src/utils/time.js';
+import { autoCancelNoShows } from '../src/services/appointment.service.js';
+import { addDays, clock, slotDateValue, slotInstant, todayVN } from '../src/utils/time.js';
 
 before(setup);
 after(teardown);
@@ -57,6 +58,43 @@ describe('Giờ nhận bệnh 8:00 – 16:30', () => {
 
     clock.now = () => today('16:29');
     await staff.post(`/api/staff/appointments/${a._id}/checkin`).expect(200);
+  });
+});
+
+describe('Tự huỷ phiếu không đến sau 17:00', () => {
+  const today = (hhmm) => slotInstant(todayVN(), hhmm);
+  const setDay = (a, dateStr) => Appointment.updateOne({ _id: a._id }, { $set: { slotDate: slotDateValue(dateStr) } });
+
+  it('trước 17:00 chưa huỷ, từ 17:00 phiếu hôm nay còn Chưa đến chuyển sang Đã huỷ', async () => {
+    const a = await todayAppointment('Không Đến', { start: '09:00' });
+    assert.equal(await autoCancelNoShows(today('16:59')), 0);
+    assert.equal((await Appointment.findById(a._id)).status, 'BOOKED');
+
+    assert.equal(await autoCancelNoShows(today('17:00')), 1);
+    const after = await Appointment.findById(a._id);
+    assert.equal(after.status, 'CANCELLED');
+    assert.match(after.cancelReason, /Không đến khám/);
+    assert.ok(after.cancelledAt);
+    assert.equal(after.cancelledBy, null);
+  });
+
+  it('chỉ huỷ phiếu Chưa đến của hôm nay và các ngày trước, không đụng phiếu đã check-in hay ngày sau', async () => {
+    const staff = await staffAgent();
+    const checkedIn = await todayAppointment('Đã Đến');
+    await staff.post(`/api/staff/appointments/${checkedIn._id}/checkin`).expect(200);
+    const yesterday = await todayAppointment('Hôm Qua');
+    await setDay(yesterday, addDays(todayVN(), -1));
+    const tomorrow = await todayAppointment('Ngày Mai');
+    await setDay(tomorrow, addDays(todayVN(), 1));
+
+    // Phiếu ngày trước bị bỏ sót (server tắt lúc 17:00) được huỷ bù, kể cả buổi sáng
+    assert.equal(await autoCancelNoShows(today('09:00')), 1);
+    assert.equal((await Appointment.findById(yesterday._id)).status, 'CANCELLED');
+
+    await autoCancelNoShows(today('17:30'));
+    // Đã check-in (tự động mời có thể đưa luôn vào khám) thì không bị huỷ
+    assert.notEqual((await Appointment.findById(checkedIn._id)).status, 'CANCELLED');
+    assert.equal((await Appointment.findById(tomorrow._id)).status, 'BOOKED');
   });
 });
 

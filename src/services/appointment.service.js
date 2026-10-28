@@ -1,5 +1,5 @@
 import { rules } from '../config.js';
-import { STATUS_LABELS } from '../shared/constants.js';
+import { RECEIVING_HOURS, STATUS_LABELS } from '../shared/constants.js';
 import {
   ACTIVE_STATUSES,
   Appointment,
@@ -13,6 +13,7 @@ import {
 import { badRequest, conflict, forbidden, notFound } from '../utils/errors.js';
 import { escapeRegex } from '../utils/validate.js';
 import {
+  clock,
   ddmm,
   diffDays,
   hhmmToMinutes,
@@ -207,6 +208,31 @@ async function cancelInternal(appt, by, reason) {
   await Checkin.updateMany({ appointmentId: appt._id, status: { $in: ['WAITING', 'IN_ROOM'] } }, { $set: { status: 'REVERTED', seatNo: null } });
   await releaseSlot(slotDateStr(appt.slotDate), appt.slotStart);
   return updated;
+}
+
+export const NO_SHOW_REASON = `Không đến khám (hệ thống tự huỷ lúc ${RECEIVING_HOURS.noShowCancel.replace(/^0/, '')})`;
+
+/**
+ * Tự huỷ phiếu không đến: từ 17:00 phiếu hôm nay còn Chưa đến chuyển sang Đã huỷ; phiếu Chưa đến của các ngày
+ * trước (bị bỏ sót khi server tắt) huỷ bù ngay. Phiếu đã check-in giữ nguyên. Trả về số phiếu đã huỷ.
+ */
+export async function autoCancelNoShows(now = clock.now()) {
+  const today = todayVN(now);
+  const pastCutoff = minutesOfDayVN(now) >= hhmmToMinutes(RECEIVING_HOURS.noShowCancel);
+  const slotDate = pastCutoff ? { $lte: slotDateValue(today) } : { $lt: slotDateValue(today) };
+  const due = await Appointment.find({ status: 'BOOKED', slotDate }).select('_id slotDate slotStart').lean();
+  let cancelled = 0;
+  for (const appt of due) {
+    const res = await Appointment.updateOne(
+      { _id: appt._id, status: 'BOOKED' },
+      { $set: { status: 'CANCELLED', cancelReason: NO_SHOW_REASON, cancelledBy: null, cancelledAt: now } },
+    );
+    if (res.modifiedCount) {
+      cancelled += 1;
+      await releaseSlot(slotDateStr(appt.slotDate), appt.slotStart);
+    }
+  }
+  return cancelled;
 }
 
 export async function userCancel(user, appointmentId, reason) {
