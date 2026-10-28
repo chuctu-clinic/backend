@@ -1,5 +1,7 @@
 process.env.NODE_ENV = 'test';
 process.env.SMS_PROVIDER = 'console';
+// Kiểm thử không bao giờ gửi email thật, kể cả khi .env đặt EMAIL_PROVIDER=smtp
+process.env.EMAIL_PROVIDER = 'console';
 
 const { default: mongoose } = await import('mongoose');
 const { default: request } = await import('supertest');

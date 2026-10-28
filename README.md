@@ -69,6 +69,9 @@ Chép `.env.example` thành `.env`:
 | `JWT_SECRET` | Khoá ký phiên đăng nhập. Khi chạy production phải là chuỗi ngẫu nhiên, ít nhất 32 ký tự. |
 | `CLIENT_ORIGIN` | Địa chỉ frontend được gọi API (CORS); nhiều địa chỉ thì ngăn bằng dấu phẩy. |
 | `SMS_PROVIDER` | `console` (in mã ra log) hoặc `firebase` (Firebase Phone Auth, xem bên dưới). |
+| `EMAIL_PROVIDER` | Gửi mã qua email cho quên mật khẩu và đổi email của nhân viên: `console` (in mã ra log, khi phát triển mã hiện luôn trên hộp thoại; production báo "liên hệ quản trị viên") hoặc `smtp` (gửi thật qua Nodemailer). |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | Bắt buộc khi `EMAIL_PROVIDER=smtp`, thiếu thì server không khởi động. Gmail: `smtp.gmail.com`, `587`, địa chỉ Gmail, Mật khẩu ứng dụng; `MAIL_FROM` là chính địa chỉ Gmail đó. Cổng 465 tự dùng kết nối bảo mật trực tiếp. |
+| `EMAIL_DEV_CODE` | Mã mẫu 6 số cho mã gửi qua email khi phát triển (`NODE_ENV=development`, `EMAIL_PROVIDER=console`). Bỏ trống thì là `123456`. Kiểm thử và production luôn dùng mã ngẫu nhiên. |
 | `FIREBASE_PROJECT_ID`, `FIREBASE_API_KEY`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_APP_ID` | Cấu hình Web app Firebase (giá trị công khai), chỉ dùng khi `SMS_PROVIDER=firebase`. |
 | `FIREBASE_AUTH_EMULATOR_HOST` | Ví dụ `127.0.0.1:9099`: dùng Firebase Auth Emulator, không gửi SMS thật. |
 

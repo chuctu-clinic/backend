@@ -11,6 +11,18 @@ export const config = {
   jwtSecret: process.env.JWT_SECRET || 'dev-secret-chuc-tu',
   clientOrigin: (process.env.CLIENT_ORIGIN || 'http://localhost:5173').split(',').map((s) => s.trim()),
   smsProvider: process.env.SMS_PROVIDER || 'console',
+  // Gửi mã qua email (quên mật khẩu, đổi email nội bộ): console (in ra log) | smtp
+  emailProvider: process.env.EMAIL_PROVIDER || 'console',
+  smtp: {
+    host: process.env.SMTP_HOST || '',
+    port: Number(process.env.SMTP_PORT || 587),
+    user: process.env.SMTP_USER || '',
+    // Mật khẩu ứng dụng Gmail có dấu cách khi Google hiển thị; bỏ đi cho chắc
+    pass: (process.env.SMTP_PASS || '').replace(/\s+/g, ''),
+  },
+  mailFrom: process.env.MAIL_FROM || '',
+  // Mã mẫu cố định cho mã gửi qua email, chỉ dùng khi phát triển (NODE_ENV=development, EMAIL_PROVIDER=console)
+  emailDevCode: /^\d{6}$/.test(process.env.EMAIL_DEV_CODE || '') ? process.env.EMAIL_DEV_CODE : '123456',
   // Firebase Phone Auth (SMS_PROVIDER=firebase): trình duyệt gửi và xác nhận mã, server kiểm ID token.
   // Các giá trị web là công khai (giống cấu hình Web app trên Firebase Console), server chỉ cần projectId.
   firebase: {
@@ -53,6 +65,19 @@ export const rules = {
   },
   minPasswordLength: 8,
 };
+
+if (!['console', 'smtp'].includes(config.emailProvider)) {
+  throw new Error(`EMAIL_PROVIDER phải là console hoặc smtp (đang là "${config.emailProvider}")`);
+}
+if (config.emailProvider === 'smtp') {
+  const missing = [
+    ['SMTP_HOST', config.smtp.host],
+    ['SMTP_USER', config.smtp.user],
+    ['SMTP_PASS', config.smtp.pass],
+    ['MAIL_FROM', config.mailFrom],
+  ].filter(([, v]) => !v);
+  if (missing.length) throw new Error(`EMAIL_PROVIDER=smtp cần đặt ${missing.map(([k]) => k).join(', ')} trong .env`);
+}
 
 // Khoá ký phiên và băm mã xác nhận: khi production không được dùng giá trị mặc định, chuỗi mẫu trong
 // .env.example / docker-compose.yml (ai đọc mã nguồn cũng biết) hay chuỗi quá ngắn.
