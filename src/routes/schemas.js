@@ -5,10 +5,13 @@ import { todayVN } from '../utils/time.js';
 import { dateStr, fullName, gender, objectId, optionalText, phone } from '../utils/validate.js';
 
 const pastDate = dateStr.refine((s) => s < todayVN(), 'Ngày sinh phải trước hôm nay.');
+// Các ô không bắt buộc: không gửi (undefined) thì giữ nguyên giá trị cũ; gửi chuỗi rỗng hoặc null mới là xoá
+const keepOrClear = (v) => (v === undefined ? undefined : v || null);
+
 const optionalPhone = z
   .union([phone, z.literal(''), z.null()])
   .optional()
-  .transform((v) => (v ? v : null));
+  .transform(keepOrClear);
 
 export const serviceType = z.enum(Object.keys(SERVICE_TYPES), {
   errorMap: () => ({ message: 'Cô chú vui lòng chọn nội dung khám.' }),
@@ -19,11 +22,11 @@ const relationship = z.enum(RELATIONSHIPS, { errorMap: () => ({ message: 'Cô ch
 const optionalNationalId = z
   .union([z.string().trim().regex(/^\d{9}$|^\d{12}$/, 'Số căn cước gồm 12 chữ số (hoặc 9 số với CMND cũ).'), z.literal(''), z.null()])
   .optional()
-  .transform((v) => (v ? v : null));
+  .transform(keepOrClear);
 const optionalEmail = z
   .union([z.string().trim().email('Email chưa đúng định dạng.').max(200), z.literal(''), z.null()])
   .optional()
-  .transform((v) => (v ? v.toLowerCase() : null));
+  .transform((v) => keepOrClear(v && v.toLowerCase()));
 
 const thisYear = Number(todayVN().slice(0, 4));
 const birthYear = z.coerce
@@ -79,6 +82,8 @@ export const staffPatientSchema = z.object({
   dob: pastDate.optional().nullable(),
   gender: gender.optional().nullable(),
   address: optionalText(300),
+  nationalId: optionalNationalId,
+  email: optionalEmail,
 });
 export const staffPatientUpdateSchema = staffPatientSchema.partial();
 

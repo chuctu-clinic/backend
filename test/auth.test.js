@@ -126,6 +126,73 @@ describe('Tài khoản nội bộ', () => {
     await agent.get('/api/staff/queue').expect(200);
   });
 
+  it('admin và tiếp tân tự đổi mật khẩu, mật khẩu cũ hết dùng được', async () => {
+    for (const identifier of ['admin@chuctu.vn', 'letan@chuctu.vn']) {
+      const agent = await staffAgent(identifier);
+      await agent.post('/api/auth/change-password').send({ currentPassword: 'ChucTu@2026', newPassword: 'MatKhauMoi456' }).expect(200);
+      await request(app).post('/api/auth/staff/login').send({ identifier, password: 'ChucTu@2026' }).expect(401);
+      await request(app).post('/api/auth/staff/login').send({ identifier, password: 'MatKhauMoi456' }).expect(200);
+    }
+  });
+
+  it('mật khẩu mới phải từ 8 ký tự', async () => {
+    const agent = await staffAgent();
+    const res = await agent.post('/api/auth/change-password').send({ currentPassword: 'ChucTu@2026', newPassword: '1234567' }).expect(400);
+    assert.match(res.body.error.fields.newPassword, /8 ký tự/);
+    await agent.post('/api/auth/change-password').send({ currentPassword: 'ChucTu@2026', newPassword: '12345678' }).expect(200);
+  });
+
+  it('đổi mật khẩu cần đúng mật khẩu hiện tại và mật khẩu mới phải khác', async () => {
+    const agent = await staffAgent();
+    let res = await agent.post('/api/auth/change-password').send({ currentPassword: 'sai-mat-khau', newPassword: 'MatKhauMoi456' }).expect(400);
+    assert.ok(res.body.error.fields.currentPassword);
+    res = await agent.post('/api/auth/change-password').send({ currentPassword: 'ChucTu@2026', newPassword: 'ChucTu@2026' }).expect(400);
+    assert.ok(res.body.error.fields.newPassword);
+  });
+
+  it('người dùng và khách chưa đăng nhập không đổi mật khẩu được', async () => {
+    await request(app).post('/api/auth/change-password').send({ currentPassword: 'x', newPassword: 'MatKhauMoi456' }).expect(401);
+    const user = await registerUser('0911000007');
+    await user.post('/api/auth/change-password').send({ currentPassword: 'x', newPassword: 'MatKhauMoi456' }).expect(400);
+  });
+
+  it('admin và tiếp tân tự sửa họ tên, không sửa được số điện thoại, email, vai trò', async () => {
+    for (const identifier of ['admin@chuctu.vn', 'letan@chuctu.vn']) {
+      const agent = await staffAgent(identifier);
+      const before = (await agent.get('/api/auth/me').expect(200)).body.user;
+      const res = await agent
+        .patch('/api/staff/account')
+        .send({ fullName: '  Tên Mới Sửa  ', phone: '0999999999', email: 'khac@chuctu.vn', role: 'USER' })
+        .expect(200);
+      assert.equal(res.body.user.fullName, 'Tên Mới Sửa');
+      assert.equal(res.body.user.phone, before.phone);
+      assert.equal(res.body.user.email, before.email);
+      assert.equal(res.body.user.role, before.role);
+    }
+  });
+
+  it('họ tên để trống thì báo lỗi theo trường', async () => {
+    const agent = await staffAgent();
+    const res = await agent.patch('/api/staff/account').send({ fullName: '   ' }).expect(400);
+    assert.ok(res.body.error.fields.fullName);
+  });
+
+  it('người dùng không sửa được qua API nội bộ', async () => {
+    const user = await registerUser('0911000008');
+    await user.patch('/api/staff/account').send({ fullName: 'Ai Đó' }).expect(403);
+  });
+
+  it('admin sửa tên hoặc số điện thoại ở Quản lý tài khoản thì email giữ nguyên', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const me = (await admin.get('/api/auth/me').expect(200)).body.user;
+    const res = await admin.patch(`/api/admin/accounts/${me.id}`).send({ fullName: 'Admin', phone: me.phone }).expect(200);
+    assert.equal(res.body.account.fullName, 'Admin');
+    assert.equal(res.body.account.email, 'admin@chuctu.vn');
+    // Gửi email rỗng mới là xoá email
+    const cleared = await admin.patch(`/api/admin/accounts/${me.id}`).send({ email: '' }).expect(200);
+    assert.equal(cleared.body.account.email, null);
+  });
+
   it('mật khẩu tạm phải từ 8 ký tự', async () => {
     const admin = await staffAgent('admin@chuctu.vn');
     const res = await admin

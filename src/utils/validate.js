@@ -44,7 +44,8 @@ export const optionalText = (max = 300) =>
     .max(max, `Tối đa ${max} ký tự.`)
     .optional()
     .nullable()
-    .transform((v) => (v ? v : null));
+    // Không gửi (undefined) thì giữ nguyên giá trị cũ; gửi chuỗi rỗng hoặc null mới là xoá
+    .transform((v) => (v === undefined ? undefined : v || null));
 
 export const objectId = z.string().regex(/^[a-f\d]{24}$/i, 'Mã không hợp lệ.');
 

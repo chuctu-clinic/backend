@@ -1,11 +1,18 @@
 process.env.NODE_ENV = 'test';
 process.env.SMS_PROVIDER = 'console';
+// Kiểm thử không bao giờ gửi email thật, kể cả khi .env đặt EMAIL_PROVIDER=smtp
+process.env.EMAIL_PROVIDER = 'console';
 
 const { default: mongoose } = await import('mongoose');
 const { default: request } = await import('supertest');
 const { createApp } = await import('../src/app.js');
 const { connectDb, disconnectDb } = await import('../src/db.js');
 const { seed } = await import('../src/seed.js');
+const { clock, slotInstant, todayVN } = await import('../src/utils/time.js');
+
+// Các quy tắc theo giờ (check-in trong giờ nhận bệnh) tính như đang 10:00 sáng hôm nay, chạy test lúc nào cũng vậy
+export const DEFAULT_NOW = () => slotInstant(todayVN(), '10:00');
+clock.now = DEFAULT_NOW;
 
 export { request };
 export const app = createApp();

@@ -109,6 +109,45 @@ router.post(
   }),
 );
 
+// Quên mật khẩu: email → mã 6 số → token ngắn hạn → mật khẩu mới
+const resetEmail = z
+  .string({ required_error: 'Vui lòng nhập email.' })
+  .trim()
+  .toLowerCase()
+  .min(1, 'Vui lòng nhập email.')
+  .email('Email chưa đúng, ví dụ ten@email.com.');
+const newPassword = z
+  .string({ required_error: 'Vui lòng nhập mật khẩu mới.' })
+  .min(rules.minPasswordLength, `Mật khẩu cần ít nhất ${rules.minPasswordLength} ký tự.`);
+
+router.post(
+  '/staff/forgot-password',
+  ah(async (req, res) => {
+    const { email } = parse(z.object({ email: resetEmail }), req.body);
+    res.json(await auth.startPasswordReset(email));
+  }),
+);
+
+router.post(
+  '/staff/forgot-password/verify',
+  ah(async (req, res) => {
+    const { email, code } = parse(
+      z.object({ email: resetEmail, code: z.string().regex(/^\d{6}$/, 'Vui lòng nhập đủ 6 số.') }),
+      req.body,
+    );
+    res.json(await auth.verifyPasswordReset(email, code));
+  }),
+);
+
+router.post(
+  '/staff/reset-password',
+  ah(async (req, res) => {
+    const data = parse(z.object({ token: z.string().min(1), newPassword }), req.body);
+    await auth.resetPassword(data.token, data.newPassword);
+    res.json({ ok: true });
+  }),
+);
+
 router.post(
   '/change-password',
   requireAuth,

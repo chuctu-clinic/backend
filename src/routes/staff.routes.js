@@ -2,17 +2,58 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireStaff } from '../middleware/auth.js';
 import * as appts from '../services/appointment.service.js';
+import * as auth from '../services/auth.service.js';
 import * as patients from '../services/patient.service.js';
 import * as queue from '../services/queue.service.js';
 import * as records from '../services/medicalRecord.service.js';
 import { ah } from '../utils/errors.js';
-import { dateStr, objectId, paging, parse } from '../utils/validate.js';
+import { dateStr, fullName, objectId, paging, parse } from '../utils/validate.js';
 import { todayVN } from '../utils/time.js';
 import { recordSchema, serviceType, slotStart, staffPatientSchema, staffPatientUpdateSchema } from './schemas.js';
 
 // Tiếp tân và Admin (BR.07, BR.23, BR.34). Admin có toàn quyền nên dùng chung các API này.
 const router = Router();
 router.use(requireStaff);
+
+// ---------- Thông tin tài khoản của chính mình ----------
+
+// Sửa họ tên. Số điện thoại là tên đăng nhập, vai trò do Admin cấp; đổi email đi qua bước xác minh bên dưới.
+router.patch(
+  '/account',
+  ah(async (req, res) => {
+    const data = parse(z.object({ fullName }), req.body);
+    req.user.fullName = data.fullName;
+    await req.user.save();
+    res.json({ user: req.user.toPublic() });
+  }),
+);
+
+// Đổi email: gửi mã tới email mới, nhập đúng mã thì mới lưu
+router.post(
+  '/account/email',
+  ah(async (req, res) => {
+    const { email } = parse(
+      z.object({
+        email: z
+          .string({ required_error: 'Vui lòng nhập email.' })
+          .trim()
+          .toLowerCase()
+          .min(1, 'Vui lòng nhập email.')
+          .email('Email chưa đúng, ví dụ ten@email.com.'),
+      }),
+      req.body,
+    );
+    res.json(await auth.startEmailChange(req.user, email));
+  }),
+);
+
+router.post(
+  '/account/email/verify',
+  ah(async (req, res) => {
+    const { code } = parse(z.object({ code: z.string().regex(/^\d{6}$/, 'Vui lòng nhập đủ 6 số.') }), req.body);
+    res.json({ user: (await auth.confirmEmailChange(req.user, code)).toPublic() });
+  }),
+);
 
 // ---------- Lịch trong ngày (UC.7.1, UC.7.2) ----------
 
@@ -69,6 +110,8 @@ router.post(
       z.object({ patientId: objectId, serviceType, slotDate: dateStr, slotStart, checkInNow: z.boolean().optional() }),
       req.body,
     );
+    // Ngoài giờ nhận bệnh thì báo trước, không tạo phiếu rồi mới lỗi ở bước check-in
+    if (data.checkInNow) queue.assertReceivingTime();
     const appt = await appts.counterBook(req.user, data);
     if (data.checkInNow) await queue.checkIn(req.user, appt._id);
     res.status(201).json({ appointment: await appts.getStaffAppointment(appt._id) });
