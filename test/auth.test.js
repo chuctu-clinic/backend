@@ -117,7 +117,7 @@ describe('Tài khoản nội bộ', () => {
     const admin = await staffAgent('admin@chuctu.vn');
     await admin
       .post('/api/admin/accounts')
-      .send({ fullName: 'Lễ Tân Mới', phone: '0900000099', role: 'RECEPTIONIST', tempPassword: 'TamThoi123' })
+      .send({ fullName: 'Lễ Tân Mới', phone: '0900000099', email: 'letanmoi@chuctu.vn', role: 'RECEPTIONIST', tempPassword: 'TamThoi123' })
       .expect(201);
     const agent = request.agent(app);
     await agent.post('/api/auth/staff/login').send({ identifier: '0900000099', password: 'TamThoi123' }).expect(200);
@@ -188,16 +188,16 @@ describe('Tài khoản nội bộ', () => {
     const res = await admin.patch(`/api/admin/accounts/${me.id}`).send({ fullName: 'Admin', phone: me.phone }).expect(200);
     assert.equal(res.body.account.fullName, 'Admin');
     assert.equal(res.body.account.email, 'admin@chuctu.vn');
-    // Gửi email rỗng mới là xoá email
-    const cleared = await admin.patch(`/api/admin/accounts/${me.id}`).send({ email: '' }).expect(200);
-    assert.equal(cleared.body.account.email, null);
+    // Tài khoản nội bộ không xoá được email
+    const cleared = await admin.patch(`/api/admin/accounts/${me.id}`).send({ email: '' }).expect(400);
+    assert.equal(cleared.body.error.code, 'EMAIL_REQUIRED');
   });
 
   it('mật khẩu tạm phải từ 8 ký tự', async () => {
     const admin = await staffAgent('admin@chuctu.vn');
     const res = await admin
       .post('/api/admin/accounts')
-      .send({ fullName: 'Lễ Tân', phone: '0900000098', role: 'RECEPTIONIST', tempPassword: '123' })
+      .send({ fullName: 'Lễ Tân', phone: '0900000098', email: 'letan98@chuctu.vn', role: 'RECEPTIONIST', tempPassword: '123' })
       .expect(400);
     assert.ok(res.body.error.fields.tempPassword);
   });

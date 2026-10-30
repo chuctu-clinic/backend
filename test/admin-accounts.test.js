@@ -48,6 +48,30 @@ describe('Tạo và sửa tài khoản (UC.8.1 – UC.8.3)', () => {
     await staffLogin('moi@chuctu.vn', 'SaiMatKhau@1').expect(401);
   });
 
+  it('tài khoản nội bộ bắt buộc có email để dùng Quên mật khẩu', async () => {
+    const admin = await adminAgent();
+    for (const role of ['RECEPTIONIST', 'ADMIN']) {
+      const res = await admin.post('/api/admin/accounts').send(newAccount({ role, tempPassword: TEMP })).expect(400);
+      assert.equal(res.body.error.code, 'EMAIL_REQUIRED');
+      assert.ok(res.body.error.fields.email);
+      await admin.post('/api/admin/accounts').send(newAccount({ role, tempPassword: TEMP, email: '' })).expect(400);
+    }
+    assert.equal(await User.exists({ phone: newAccount().phone }), null);
+    // Tài khoản người dùng vẫn không cần email
+    await admin.post('/api/admin/accounts').send(newAccount()).expect(201);
+  });
+
+  it('không xoá được email của tài khoản nội bộ, tài khoản người dùng thì được', async () => {
+    const admin = await adminAgent();
+    const receptionist = await User.findOne({ role: 'RECEPTIONIST' });
+    await admin.patch(`/api/admin/accounts/${receptionist._id}`).send({ email: '' }).expect(400);
+    await admin.patch(`/api/admin/accounts/${receptionist._id}`).send({ email: null }).expect(400);
+    assert.equal((await User.findById(receptionist._id)).email, 'letan@chuctu.vn');
+
+    const { account } = (await admin.post('/api/admin/accounts').send(newAccount({ email: 'nguoidung@chuctu.vn' })).expect(201)).body;
+    await admin.patch(`/api/admin/accounts/${account.id}`).send({ email: '' }).expect(200);
+  });
+
   it('số điện thoại và email không được trùng tài khoản khác', async () => {
     const admin = await adminAgent();
     const first = (await admin.post('/api/admin/accounts').send(newAccount({ role: 'RECEPTIONIST', email: 'a@chuctu.vn', tempPassword: TEMP })).expect(201)).body.account;
@@ -118,10 +142,26 @@ describe('Đổi vai trò và đặt lại mật khẩu (BR.32, UC.8.5)', () => 
     assert.equal(res.body.error.code, 'PASSWORD_REQUIRED');
     assert.equal((await User.findById(id)).role, 'USER');
 
-    const { account } = (await admin.put(`/api/admin/accounts/${id}/role`).send({ role: 'RECEPTIONIST', tempPassword: TEMP }).expect(200)).body;
+    const noEmail = await admin.put(`/api/admin/accounts/${id}/role`).send({ role: 'RECEPTIONIST', tempPassword: TEMP }).expect(400);
+    assert.equal(noEmail.body.error.code, 'EMAIL_REQUIRED');
+    const taken = await admin.put(`/api/admin/accounts/${id}/role`).send({ role: 'RECEPTIONIST', tempPassword: TEMP, email: 'admin@chuctu.vn' }).expect(409);
+    assert.equal(taken.body.error.code, 'EMAIL_TAKEN');
+    assert.equal((await User.findById(id)).role, 'USER');
+
+    const { account } = (await admin.put(`/api/admin/accounts/${id}/role`).send({ role: 'RECEPTIONIST', tempPassword: TEMP, email: 'LenVaiTro@chuctu.vn' }).expect(200)).body;
     assert.equal(account.role, 'RECEPTIONIST');
+    assert.equal(account.email, 'lenvaitro@chuctu.vn');
     assert.equal((await User.findById(id)).mustChangePassword, true);
     await staffLogin('0911000001', TEMP).expect(200);
+  });
+
+  it('đã có mật khẩu nhưng chưa có email thì đổi vai trò chỉ cần nhập email', async () => {
+    const admin = await adminAgent();
+    const receptionist = await User.findOne({ role: 'RECEPTIONIST' });
+    await User.updateOne({ _id: receptionist._id }, { $unset: { email: 1 } });
+    const res = await admin.put(`/api/admin/accounts/${receptionist._id}/role`).send({ role: 'ADMIN' }).expect(400);
+    assert.equal(res.body.error.code, 'EMAIL_REQUIRED');
+    await admin.put(`/api/admin/accounts/${receptionist._id}/role`).send({ role: 'ADMIN', email: 'moi@chuctu.vn' }).expect(200);
   });
 
   it('đã có mật khẩu thì đổi vai trò không cần mật khẩu tạm', async () => {
@@ -147,6 +187,25 @@ describe('Đổi vai trò và đặt lại mật khẩu (BR.32, UC.8.5)', () => 
     await staffLogin('letan@chuctu.vn', 'ChucTu@2026').expect(401);
     await staffLogin('letan@chuctu.vn', TEMP).expect(200);
     assert.equal((await User.findById(receptionist._id)).mustChangePassword, true);
+  });
+
+  it('đặt lại mật khẩu thì phiên cũ của người đó không làm việc được nữa', async () => {
+    const admin = await adminAgent();
+    const staff = await staffAgent();
+    const receptionist = await User.findOne({ role: 'RECEPTIONIST' });
+    await staff.get('/api/staff/queue').expect(200);
+    await admin.post(`/api/admin/accounts/${receptionist._id}/reset-password`).send({ tempPassword: TEMP }).expect(200);
+    await staff.get('/api/staff/queue').expect(403);
+  });
+
+  it('không tự đặt lại mật khẩu, tiếp tân không gọi được, mật khẩu tạm phải đủ dài', async () => {
+    const admin = await adminAgent();
+    const staff = await staffAgent();
+    const me = await User.findOne({ role: 'ADMIN' });
+    const receptionist = await User.findOne({ role: 'RECEPTIONIST' });
+    await admin.post(`/api/admin/accounts/${me._id}/reset-password`).send({ tempPassword: TEMP }).expect(400);
+    await admin.post(`/api/admin/accounts/${receptionist._id}/reset-password`).send({ tempPassword: 'ngan' }).expect(400);
+    await staff.post(`/api/admin/accounts/${me._id}/reset-password`).send({ tempPassword: TEMP }).expect(403);
   });
 
   it('tài khoản người dùng không có mật khẩu để đặt lại', async () => {

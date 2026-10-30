@@ -86,8 +86,8 @@ router.post(
 router.put(
   '/accounts/:id/role',
   ah(async (req, res) => {
-    const data = parse(z.object({ role, tempPassword: tempPassword.optional() }), req.body);
-    res.json({ account: (await accounts.setRole(req.user, req.params.id, data.role, data.tempPassword)).toPublic() });
+    const data = parse(z.object({ role, tempPassword: tempPassword.optional(), email }), req.body);
+    res.json({ account: (await accounts.setRole(req.user, req.params.id, data.role, data.tempPassword, data.email)).toPublic() });
   }),
 );
 
@@ -95,7 +95,7 @@ router.post(
   '/accounts/:id/reset-password',
   ah(async (req, res) => {
     const data = parse(z.object({ tempPassword }), req.body);
-    res.json({ account: (await accounts.resetPassword(req.params.id, data.tempPassword)).toPublic() });
+    res.json({ account: (await accounts.resetPassword(req.user, req.params.id, data.tempPassword)).toPublic() });
   }),
 );
 

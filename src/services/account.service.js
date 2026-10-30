@@ -42,10 +42,15 @@ export async function getAccount(id) {
   return user;
 }
 
-/** Admin thêm tài khoản; tài khoản nội bộ phải có mật khẩu tạm tối thiểu 8 ký tự (BR.33). */
+/** Tài khoản nội bộ phải có email: Quên mật khẩu gửi mã qua email. */
+const emailRequired = () =>
+  badRequest('Tài khoản nội bộ cần có email để dùng chức năng Quên mật khẩu.', { fields: { email: 'Vui lòng nhập email.' } }, 'EMAIL_REQUIRED');
+
+/** Admin thêm tài khoản; tài khoản nội bộ phải có email và mật khẩu tạm tối thiểu 8 ký tự (BR.33). */
 export async function createAccount(data) {
   await assertUnique(data);
   const internal = STAFF_ROLES.includes(data.role);
+  if (internal && !data.email) throw emailRequired();
   if (internal && (!data.tempPassword || data.tempPassword.length < rules.minPasswordLength)) {
     throw badRequest(`Mật khẩu tạm cần tối thiểu ${rules.minPasswordLength} ký tự.`, {
       fields: { tempPassword: `Mật khẩu tạm cần tối thiểu ${rules.minPasswordLength} ký tự.` },
@@ -68,6 +73,7 @@ export async function createAccount(data) {
 export async function updateAccount(id, data) {
   const user = await getAccount(id);
   assertFresh(user.infoUpdatedAt ?? user.createdAt, data.expectedUpdatedAt);
+  if (STAFF_ROLES.includes(user.role) && data.email === null) throw emailRequired();
   await assertUnique({ phone: data.phone, email: data.email }, user._id);
   for (const key of ['fullName', 'phone', 'address', 'gender']) {
     if (data[key] !== undefined) user[key] = data[key];
@@ -89,8 +95,8 @@ export async function setAccountActive(admin, id, active) {
   return user;
 }
 
-/** Đổi vai trò. Lên vai trò nội bộ mà chưa có mật khẩu thì cần đặt mật khẩu tạm (BR.32). */
-export async function setRole(admin, id, role, tempPassword) {
+/** Đổi vai trò. Lên vai trò nội bộ mà chưa có mật khẩu, email thì cần đặt mật khẩu tạm và nhập email (BR.32). */
+export async function setRole(admin, id, role, tempPassword, email) {
   if (!ROLES.includes(role)) throw badRequest('Vai trò không hợp lệ.');
   const user = await User.findById(id).select('+passwordHash');
   if (!user) throw notFound('Không tìm thấy tài khoản.');
@@ -104,13 +110,20 @@ export async function setRole(admin, id, role, tempPassword) {
     user.passwordHash = await hashPassword(tempPassword);
     user.mustChangePassword = true;
   }
+  if (STAFF_ROLES.includes(role) && !user.email) {
+    if (!email) throw emailRequired();
+    await assertUnique({ email }, user._id);
+    user.email = email;
+  }
   user.role = role;
   await user.save();
   return user;
 }
 
-export async function resetPassword(id, tempPassword) {
+/** Cấp mật khẩu tạm khi không tự lấy lại được qua email. Tự đổi mật khẩu của mình thì ở trang Tài khoản. */
+export async function resetPassword(admin, id, tempPassword) {
   const user = await getAccount(id);
+  if (user._id.equals(admin._id)) throw badRequest('Không tự đặt lại mật khẩu của tài khoản đang đăng nhập.');
   if (!STAFF_ROLES.includes(user.role)) throw badRequest('Tài khoản người dùng không dùng mật khẩu.');
   user.passwordHash = await hashPassword(tempPassword);
   user.mustChangePassword = true;
