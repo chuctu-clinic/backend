@@ -254,3 +254,38 @@ describe('Check-in và điều phối hàng đợi', () => {
     assert.ok(dates.dates.includes(todayVN()));
   });
 });
+
+describe('Mời vào khám (UC.10.2)', () => {
+  it('hàng chờ trống thì báo chưa có ai', async () => {
+    const staff = await staffAgent();
+    const res = await staff.post('/api/staff/queue/invite').expect(409);
+    assert.equal(res.body.error.code, 'QUEUE_EMPTY');
+  });
+
+  it('phòng đã đủ 5 người thì người tiếp theo vẫn chờ', async () => {
+    const staff = await staffAgent();
+    const people = [];
+    for (let i = 0; i < 6; i += 1) people.push(await todayAppointment(`Người ${i}`));
+    for (const a of people) await staff.post(`/api/staff/appointments/${a._id}/checkin`).expect(200);
+
+    const res = await staff.post('/api/staff/queue/invite').expect(409);
+    assert.equal(res.body.error.code, 'ROOM_FULL');
+    const state = (await staff.get('/api/staff/queue').expect(200)).body;
+    assert.equal(state.inRoomCount, 5);
+    assert.equal(state.waitingCount, 1);
+  });
+
+  it('còn ghế thì mời đúng người đầu hàng chờ', async () => {
+    const staff = await staffAgent();
+    await staff.put('/api/staff/queue/auto-invite').send({ enabled: false }).expect(200);
+    const first = await todayAppointment('Người đến trước');
+    const second = await todayAppointment('Người đến sau');
+    await staff.post(`/api/staff/appointments/${first._id}/checkin`).expect(200);
+    await staff.post(`/api/staff/appointments/${second._id}/checkin`).expect(200);
+
+    const state = (await staff.post('/api/staff/queue/invite').expect(200)).body;
+    assert.equal(state.inRoomCount, 1);
+    assert.equal((await Appointment.findById(first._id)).status, 'IN_PROGRESS');
+    assert.equal((await Appointment.findById(second._id)).status, 'CHECKED_IN');
+  });
+});

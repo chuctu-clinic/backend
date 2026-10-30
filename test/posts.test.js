@@ -82,3 +82,62 @@ describe('Danh sách bài viết của quản trị', () => {
     await request(app).get('/api/posts/gioi-thieu').expect(200);
   });
 });
+
+const POST = { summary: 'Mô tả bài', category: 'TIN_TUC', authorName: 'BS', content: '<p>Nội dung</p>', status: 'PUBLISHED' };
+const create = async (admin, data) => (await admin.post('/api/admin/posts').send({ ...POST, ...data }).expect(201)).body.post;
+
+describe('Bài viết công khai (BR.08, UC.4.1 – UC.4.3)', () => {
+  const publicList = async (qs = '') => (await request(app).get(`/api/posts${qs}`).expect(200)).body;
+
+  it('chỉ hiện bài đã công khai, không có bản nháp, bài ẩn và trang cố định', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const shown = await create(admin, { title: 'Bài công khai' });
+    const draft = await create(admin, { title: 'Bản nháp', status: 'DRAFT' });
+    const hidden = await create(admin, { title: 'Bài ẩn', status: 'HIDDEN' });
+
+    const list = await publicList();
+    assert.deepEqual(list.items.map((p) => p.id), [shown.id]);
+    assert.equal(list.total, 1);
+    assert.equal(list.items[0].content, undefined);
+    await request(app).get(`/api/posts/${draft.id}`).expect(404);
+    await request(app).get(`/api/posts/${hidden.id}`).expect(404);
+  });
+
+  it('lọc theo danh mục, tìm theo tiêu đề, bài mới đăng lên trước', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const older = await create(admin, { title: 'Khám miễn phí tháng 10', publishedAt: '2026-10-01T01:00:00.000Z' });
+    const newer = await create(admin, { title: 'Khám miễn phí tháng 11', publishedAt: '2026-11-01T01:00:00.000Z' });
+    const guide = await create(admin, { title: 'Sắc thuốc đúng cách', category: 'HUONG_DAN' });
+
+    assert.deepEqual((await publicList('?category=HUONG_DAN')).items.map((p) => p.id), [guide.id]);
+    assert.deepEqual((await publicList(`?q=${encodeURIComponent('miễn phí')}`)).items.map((p) => p.id), [newer.id, older.id]);
+    // Ký tự đặc biệt trong ô tìm kiếm không được làm hỏng truy vấn
+    assert.deepEqual((await publicList(`?q=${encodeURIComponent('(*')}`)).items, []);
+  });
+});
+
+describe('Xoá bài viết (UC.5.5)', () => {
+  it('xoá xong bài rời website và không khôi phục được', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const post = await create(admin, { title: 'Bài sẽ xoá' });
+    await admin.delete(`/api/admin/posts/${post.id}`).expect(200);
+    await request(app).get(`/api/posts/${post.id}`).expect(404);
+    await admin.get(`/api/admin/posts/${post.id}`).expect(404);
+    await admin.delete(`/api/admin/posts/${post.id}`).expect(404);
+  });
+
+  it('không xoá được trang thông tin cố định', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const page = (await request(app).get('/api/posts/gioi-thieu').expect(200)).body.post;
+    await admin.delete(`/api/admin/posts/${page.id}`).expect(400);
+    await request(app).get('/api/posts/gioi-thieu').expect(200);
+  });
+
+  it('tiếp tân không xoá và không sửa được bài', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const staff = await staffAgent();
+    const post = await create(admin, { title: 'Bài của Admin' });
+    await staff.delete(`/api/admin/posts/${post.id}`).expect(403);
+    await staff.put(`/api/admin/posts/${post.id}`).send({ status: 'HIDDEN' }).expect(403);
+  });
+});
