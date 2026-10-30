@@ -228,9 +228,9 @@ describe('Check-in và điều phối hàng đợi', () => {
     assert.ok(row.checkin.enteredAt);
     assert.equal(day.items.find((x) => x.id === first._id.toString()).checkin.queueNo, 1);
 
-    const mini = (await staff.get('/api/staff/queue/mini').expect(200)).body;
-    assert.equal(mini.inRoom, 1);
-    assert.deepEqual(mini.next.map((n) => n.fullName), ['Người đầu']);
+    const state = (await staff.get('/api/staff/queue').expect(200)).body;
+    assert.equal(state.inRoomCount, 1);
+    assert.equal(state.waitingCount, 1);
 
     const undone = await staff.post(`/api/staff/appointments/${second._id}/undo-enter`).expect(200);
     assert.equal(undone.body.appointment.status, 'CHECKED_IN');

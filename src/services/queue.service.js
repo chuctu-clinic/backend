@@ -266,19 +266,6 @@ async function slotMap(date, checkins, apptMap, pMap) {
   });
 }
 
-/** Hàng đợi thu gọn: số người trong phòng, đang chờ và 5 người kế tiếp. */
-export async function miniQueue(date = todayVN()) {
-  const [inRoom, waiting] = await Promise.all([Checkin.countDocuments({ visitDate: date, status: 'IN_ROOM' }), waitingList(date)]);
-  const head = waiting.slice(0, seats);
-  const pMap = await patientsMap(head.map((c) => c.patientId));
-  const next = head.map((c) => ({
-    id: c._id.toString(),
-    fullName: pMap.get(c.patientId.toString())?.fullName,
-    priorityGroup: c.priorityGroup,
-  }));
-  return { date, inRoom, waiting: waiting.length, capacity: seats, next };
-}
-
 /**
  * Thông tin check-in của từng phiếu trong ngày, gắn vào Lịch trong ngày: giờ check-in, giờ vào khám,
  * nhóm ưu tiên và thứ tự trong hàng chờ.

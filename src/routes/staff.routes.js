@@ -182,13 +182,6 @@ router.get(
   }),
 );
 
-router.get(
-  '/queue/mini',
-  ah(async (req, res) => {
-    res.json(await queue.miniQueue(todayVN()));
-  }),
-);
-
 router.post(
   '/queue/invite',
   ah(async (req, res) => {
