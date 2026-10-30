@@ -159,6 +159,9 @@ export async function userBook(user, { patientId, serviceType, slotDate, slotSta
   if (!patient.relationship) {
     throw badRequest('Cô chú vui lòng khai quan hệ với người đi khám trong hồ sơ.', { fields: { relationship: 'Chưa khai quan hệ.' } });
   }
+  if (patient.relationship === 'BAN_THAN' && (!patient.dob || !patient.gender || !patient.address)) {
+    throw badRequest('Hồ sơ của cô chú còn thiếu thông tin. Cô chú bổ sung ngày sinh, giới tính và địa chỉ rồi đặt lịch.', null, 'PROFILE_INCOMPLETE');
+  }
   let rescheduledFromId = null;
   if (rebookFromId) {
     const old = await Appointment.findOne({ _id: rebookFromId, userId: user._id, status: 'CANCELLED' });
