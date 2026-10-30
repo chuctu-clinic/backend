@@ -19,7 +19,10 @@ export function toDateStr(date) {
 }
 
 export function isDateStr(s) {
-  return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const time = Date.parse(`${s}T00:00:00Z`);
+  // Date.parse tự đẩy 30/02 thành 02/03: đối chiếu lại để loại ngày không có thật
+  return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === s;
 }
 
 /** Số ngày từ a tới b (YYYY-MM-DD). */

@@ -33,7 +33,7 @@ export const fullName = z
   .min(2, 'Cô chú vui lòng nhập họ và tên.')
   .max(100, 'Họ và tên quá dài.');
 
-export const dateStr = z.string().refine(isDateStr, 'Ngày chưa đúng định dạng.');
+export const dateStr = z.string().refine(isDateStr, 'Ngày không hợp lệ.');
 
 export const gender = z.enum(['NAM', 'NU', 'KHAC'], { errorMap: () => ({ message: 'Cô chú vui lòng chọn giới tính.' }) });
 
