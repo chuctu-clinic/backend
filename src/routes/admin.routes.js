@@ -9,7 +9,8 @@ import * as patients from '../services/patient.service.js';
 import * as posts from '../services/post.service.js';
 import * as uploads from '../services/upload.service.js';
 import { ah } from '../utils/errors.js';
-import { fullName, optionalText, paging, parse, phone } from '../utils/validate.js';
+import { fullName, paging, parse, phone } from '../utils/validate.js';
+import { accountUpdateSchema, expectedUpdatedAt } from './schemas.js';
 
 // Chức năng chỉ dành cho Admin (BR.05, BR.10, BR.31)
 const router = Router();
@@ -61,7 +62,7 @@ router.patch(
   '/accounts/:id',
   ah(async (req, res) => {
     const data = parse(
-      z.object({ fullName: fullName.optional(), phone: phone.optional(), email, address: optionalText(300) }),
+      z.object({ fullName: fullName.optional(), phone: phone.optional(), email, address: accountUpdateSchema.shape.address, expectedUpdatedAt }),
       req.body,
     );
     res.json({ account: (await accounts.updateAccount(req.params.id, data)).toPublic() });

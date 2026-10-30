@@ -31,22 +31,15 @@ router.patch(
     }
     const data = parse(accountUpdateSchema, req.body);
     const user = req.user;
+    patients.assertFresh(user.infoUpdatedAt ?? user.createdAt, data.expectedUpdatedAt);
     if (data.fullName !== undefined) user.fullName = data.fullName;
     if (data.gender !== undefined) user.gender = data.gender;
     if (data.address !== undefined) user.address = data.address;
     if (data.dob !== undefined) user.dob = data.dob ? new Date(`${data.dob}T00:00:00Z`) : null;
+    user.infoUpdatedAt = new Date();
     await user.save();
 
-    // Giữ hồ sơ chính chủ khớp với thông tin tài khoản
-    const self = await Patient.findOne({ userId: user._id, relationship: 'BAN_THAN', isLocked: false });
-    if (self) {
-      self.fullName = user.fullName;
-      self.gender = user.gender;
-      self.address = user.address;
-      self.dob = user.dob;
-      if (user.dob) self.birthYear = user.dob.getUTCFullYear();
-      await self.save();
-    }
+    const self = await patients.syncSelfProfile(user);
     res.json({ user: user.toPublic(), patientCode: self?.patientCode ?? null });
   }),
 );
@@ -90,8 +83,8 @@ router.patch(
       const other = await Patient.exists({ userId: req.user._id, relationship: 'BAN_THAN', _id: { $ne: req.params.id } });
       if (other) throw badRequest('Tài khoản đã có hồ sơ của chính chủ.', { fields: { relationship: 'Đã có hồ sơ chính chủ.' } });
     }
-    const patient = await patients.updateOwnProfile(req.user._id, req.params.id, data);
-    res.json({ patient: patient.toPublic() });
+    const { patient, user } = await patients.updateOwnProfile(req.user._id, req.params.id, data);
+    res.json({ patient: patient.toPublic(), user: user?.toPublic() });
   }),
 );
 

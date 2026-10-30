@@ -16,6 +16,8 @@ const userSchema = new mongoose.Schema(
     role: { type: String, enum: ROLES, required: true, default: 'USER' },
     isActive: { type: Boolean, default: true },
     lastLoginAt: { type: Date, default: null },
+    // Lần cuối đổi thông tin cá nhân; không dùng updatedAt vì mỗi lần đăng nhập nó cũng đổi
+    infoUpdatedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
@@ -38,6 +40,7 @@ userSchema.methods.toPublic = function toPublic() {
     mustChangePassword: this.mustChangePassword,
     lastLoginAt: this.lastLoginAt,
     createdAt: this.createdAt,
+    infoUpdatedAt: this.infoUpdatedAt ?? this.createdAt,
   };
 };
 

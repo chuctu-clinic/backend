@@ -3,7 +3,7 @@ import { ROLES, STAFF_ROLES, User } from '../models/index.js';
 import { badRequest, conflict, notFound } from '../utils/errors.js';
 import { escapeRegex } from '../utils/validate.js';
 import { hashPassword } from './auth.service.js';
-import { createPatient } from './patient.service.js';
+import { assertFresh, createPatient, syncSelfProfile } from './patient.service.js';
 
 async function assertUnique({ phone, email }, excludeId = null) {
   const not = excludeId ? { _id: { $ne: excludeId } } : {};
@@ -67,13 +67,16 @@ export async function createAccount(data) {
 
 export async function updateAccount(id, data) {
   const user = await getAccount(id);
+  assertFresh(user.infoUpdatedAt ?? user.createdAt, data.expectedUpdatedAt);
   await assertUnique({ phone: data.phone, email: data.email }, user._id);
   for (const key of ['fullName', 'phone', 'address', 'gender']) {
     if (data[key] !== undefined) user[key] = data[key];
   }
   if (data.email !== undefined) user.email = data.email || undefined;
   if (data.dob !== undefined) user.dob = data.dob ? new Date(`${data.dob}T00:00:00Z`) : null;
+  user.infoUpdatedAt = new Date();
   await user.save();
+  await syncSelfProfile(user);
   return user;
 }
 

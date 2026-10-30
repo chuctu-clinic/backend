@@ -44,6 +44,7 @@ patientSchema.methods.toPublic = function toPublic() {
     isLocked: this.isLocked,
     lockedAt: this.lockedAt,
     createdAt: this.createdAt,
+    updatedAt: this.updatedAt,
   };
 };
 

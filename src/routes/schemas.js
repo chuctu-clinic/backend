@@ -4,6 +4,9 @@ import { RELATIONSHIPS, SERVICE_TYPES } from '../models/index.js';
 import { todayVN } from '../utils/time.js';
 import { dateStr, fullName, gender, objectId, optionalText, phone } from '../utils/validate.js';
 
+// Thời điểm của bản đang sửa, để phát hiện người khác vừa đổi thông tin (assertFresh)
+export const expectedUpdatedAt = z.string().datetime({ offset: true }).optional();
+
 const pastDate = dateStr.refine((s) => s < todayVN(), 'Ngày sinh phải trước hôm nay.');
 // Các ô không bắt buộc: không gửi (undefined) thì giữ nguyên giá trị cũ; gửi chuỗi rỗng hoặc null mới là xoá
 const keepOrClear = (v) => (v === undefined ? undefined : v || null);
@@ -46,6 +49,7 @@ const profileFields = z.object({
   address: optionalText(300),
   nationalId: optionalNationalId,
   email: optionalEmail,
+  expectedUpdatedAt,
 });
 export const profileSchema = profileFields.refine((d) => d.dob || d.birthYear, {
   message: 'Cô chú vui lòng chọn ngày sinh hoặc năm sinh.',
@@ -64,6 +68,7 @@ export const accountUpdateSchema = z.object({
     .min(1, 'Vui lòng nhập địa chỉ.')
     .max(300, 'Tối đa 300 ký tự.')
     .optional(),
+  expectedUpdatedAt,
 });
 
 export const bookingSchema = z.object({
@@ -84,6 +89,7 @@ export const staffPatientSchema = z.object({
   address: optionalText(300),
   nationalId: optionalNationalId,
   email: optionalEmail,
+  expectedUpdatedAt,
 });
 export const staffPatientUpdateSchema = staffPatientSchema.partial();
 
