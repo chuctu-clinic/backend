@@ -86,6 +86,37 @@ describe('Danh sách bài viết của quản trị', () => {
 const POST = { summary: 'Mô tả bài', category: 'TIN_TUC', authorName: 'BS', content: '<p>Nội dung</p>', status: 'PUBLISHED' };
 const create = async (admin, data) => (await admin.post('/api/admin/posts').send({ ...POST, ...data }).expect(201)).body.post;
 
+describe('Thứ tự và phân trang ở trang quản trị', () => {
+  const titles = async (admin, qs) => (await admin.get(`/api/admin/posts?limit=10${qs}`).expect(200)).body.items.map((p) => p.title);
+
+  it('mỗi trang tối đa 10 bài, bài mới thêm đứng đầu trang 1', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const added = [];
+    for (let i = 1; i <= 12; i += 1) added.push((await create(admin, { title: `Bài ${i}` })).title);
+
+    const first = await titles(admin, '&page=1');
+    const second = await titles(admin, '&page=2');
+    assert.equal(first.length, 10);
+    assert.deepEqual(first[0], 'Bài 12');
+    assert.deepEqual([...first, ...second].filter((t) => added.includes(t)).sort(), [...added].sort());
+
+    await create(admin, { title: 'Bài vừa thêm', status: 'DRAFT' });
+    assert.equal((await titles(admin, '&page=1'))[0], 'Bài vừa thêm');
+  });
+
+  it('sửa, ẩn hoặc ghim bài thì bài không đổi chỗ', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const old = await create(admin, { title: 'Bài cũ' });
+    await create(admin, { title: 'Bài mới' });
+
+    await admin.put(`/api/admin/posts/${old.id}`).send({ title: 'Bài cũ đã sửa' }).expect(200);
+    await admin.put(`/api/admin/posts/${old.id}`).send({ status: 'HIDDEN' }).expect(200);
+    await admin.put(`/api/admin/posts/${old.id}`).send({ status: 'PUBLISHED' }).expect(200);
+    await admin.post(`/api/admin/posts/${old.id}/pin`).expect(200);
+    assert.deepEqual((await titles(admin, '&page=1')).slice(0, 2), ['Bài mới', 'Bài cũ đã sửa']);
+  });
+});
+
 describe('Bài viết công khai (BR.08, UC.4.1 – UC.4.3)', () => {
   const publicList = async (qs = '') => (await request(app).get(`/api/posts${qs}`).expect(200)).body;
 
@@ -113,6 +144,114 @@ describe('Bài viết công khai (BR.08, UC.4.1 – UC.4.3)', () => {
     assert.deepEqual((await publicList(`?q=${encodeURIComponent('miễn phí')}`)).items.map((p) => p.id), [newer.id, older.id]);
     // Ký tự đặc biệt trong ô tìm kiếm không được làm hỏng truy vấn
     assert.deepEqual((await publicList(`?q=${encodeURIComponent('(*')}`)).items, []);
+  });
+});
+
+describe('Ghim bài và bài nổi bật ở trang Bài viết', () => {
+  const featuredList = async (qs = '') => (await request(app).get(`/api/posts?featured=1${qs}`).expect(200)).body;
+  const seed = async (admin, count) => {
+    const posts = [];
+    for (let i = 1; i <= count; i += 1) {
+      posts.push(await create(admin, { title: `Bài ${i}`, publishedAt: new Date(Date.UTC(2026, 0, i)).toISOString() }));
+    }
+    return posts;
+  };
+
+  it('bài ghim đứng yên ở mọi trang, các trang chỉ chia 9 bài còn lại', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const posts = await seed(admin, 12);
+    await admin.post(`/api/admin/posts/${posts[0].id}/pin`).expect(200);
+
+    const first = await featuredList('&page=1&limit=9');
+    const second = await featuredList('&page=2&limit=9');
+    assert.equal(first.featured.id, posts[0].id);
+    assert.equal(second.featured.id, posts[0].id);
+    assert.equal(first.total, 12);
+    assert.equal(first.items.length, 9);
+    assert.equal(second.items.length, 2);
+    const shown = [...first.items, ...second.items].map((p) => p.id);
+    assert.equal(new Set(shown).size, 11);
+    assert.ok(!shown.includes(posts[0].id));
+  });
+
+  it('chưa ghim thì bài mới nhất làm bài nổi bật', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const posts = await seed(admin, 3);
+    const list = await featuredList();
+    assert.equal(list.featured.id, posts[2].id);
+    assert.deepEqual(list.items.map((p) => p.id), [posts[1].id, posts[0].id]);
+  });
+
+  it('bỏ ghim thì bài mới nhất trở lại, kể cả khi có bài cũ chưa từng ghim', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const posts = await seed(admin, 3);
+    await admin.post(`/api/admin/posts/${posts[0].id}/pin`).expect(200);
+    const { post } = (await admin.post(`/api/admin/posts/${posts[0].id}/unpin`).expect(200)).body;
+    assert.equal(post.pinned, false);
+    assert.equal((await featuredList()).featured.id, posts[2].id);
+  });
+
+  it('mỗi lần chỉ ghim một bài: ghim bài mới thì bài cũ tự bỏ ghim', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const [a, b] = await seed(admin, 2);
+    await admin.post(`/api/admin/posts/${a.id}/pin`).expect(200);
+    await admin.post(`/api/admin/posts/${a.id}/pin`).expect(200);
+    await admin.post(`/api/admin/posts/${b.id}/pin`).expect(200);
+
+    const { items } = (await admin.get('/api/admin/posts?limit=50').expect(200)).body;
+    assert.deepEqual(items.filter((p) => p.pinned).map((p) => p.id), [b.id]);
+  });
+
+  it('lọc chuyên mục khác thì bài nổi bật là bài mới nhất của chuyên mục đó', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const [pinned] = await seed(admin, 2);
+    const guide = await create(admin, { title: 'Hướng dẫn', category: 'HUONG_DAN' });
+    await admin.post(`/api/admin/posts/${pinned.id}/pin`).expect(200);
+
+    assert.equal((await featuredList('&category=HUONG_DAN')).featured.id, guide.id);
+    assert.equal((await featuredList('&category=TIN_TUC')).featured.id, pinned.id);
+    assert.equal((await featuredList('&category=SU_KIEN')).featured, null);
+  });
+
+  it('ghim không đổi giờ cập nhật', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const [post] = await seed(admin, 1);
+    const pinned = (await admin.post(`/api/admin/posts/${post.id}/pin`).expect(200)).body.post;
+    assert.equal(pinned.updatedAt, post.updatedAt);
+  });
+
+  it('ẩn bài đang ghim thì mất ghim, công khai lại không tự ghim', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const [a, b] = await seed(admin, 2);
+    await admin.post(`/api/admin/posts/${a.id}/pin`).expect(200);
+
+    const hidden = (await admin.put(`/api/admin/posts/${a.id}`).send({ status: 'HIDDEN' }).expect(200)).body.post;
+    assert.equal(hidden.pinned, false);
+    await admin.put(`/api/admin/posts/${a.id}`).send({ status: 'PUBLISHED' }).expect(200);
+    assert.equal((await featuredList()).featured.id, b.id);
+  });
+
+  it('chỉ ghim được bài đã công khai, không ghim trang cố định, tiếp tân không ghim được', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const staff = await staffAgent();
+    const draft = await create(admin, { title: 'Bản nháp', status: 'DRAFT' });
+    const page = (await request(app).get('/api/posts/gioi-thieu').expect(200)).body.post;
+    const [post] = await seed(admin, 1);
+
+    const res = await admin.post(`/api/admin/posts/${draft.id}/pin`).expect(400);
+    assert.equal(res.body.error.code, 'NOT_PINNABLE');
+    await admin.post(`/api/admin/posts/${page.id}/pin`).expect(400);
+    await staff.post(`/api/admin/posts/${post.id}/pin`).expect(403);
+    await admin.post('/api/admin/posts/000000000000000000000000/pin').expect(404);
+  });
+
+  it('danh sách thường không tách bài nổi bật (trang chủ dùng)', async () => {
+    const admin = await staffAgent('admin@chuctu.vn');
+    const posts = await seed(admin, 3);
+    await admin.post(`/api/admin/posts/${posts[0].id}/pin`).expect(200);
+    const list = (await request(app).get('/api/posts?limit=3').expect(200)).body;
+    assert.equal(list.featured, null);
+    assert.deepEqual(list.items.map((p) => p.id), [posts[2].id, posts[1].id, posts[0].id]);
   });
 });
 

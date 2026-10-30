@@ -172,6 +172,20 @@ router.put(
   }),
 );
 
+router.post(
+  '/posts/:id/pin',
+  ah(async (req, res) => {
+    res.json({ post: await posts.setPinned(req.params.id, true) });
+  }),
+);
+
+router.post(
+  '/posts/:id/unpin',
+  ah(async (req, res) => {
+    res.json({ post: await posts.setPinned(req.params.id, false) });
+  }),
+);
+
 router.delete(
   '/posts/:id',
   ah(async (req, res) => {

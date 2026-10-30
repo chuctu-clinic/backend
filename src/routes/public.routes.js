@@ -49,7 +49,7 @@ router.get(
   '/posts',
   ah(async (req, res) => {
     const { page, limit, skip } = paging(req.query, 9);
-    const result = await posts.listPublished({ category: req.query.category, q: req.query.q, skip, limit });
+    const result = await posts.listPublished({ category: req.query.category, q: req.query.q, skip, limit, withFeatured: req.query.featured === '1' });
     res.json({ ...result, page, limit });
   }),
 );

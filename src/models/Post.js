@@ -24,11 +24,15 @@ const postSchema = new mongoose.Schema(
     // HIDDEN: đã công khai rồi tạm ẩn khỏi website, giữ nguyên ngày đăng
     status: { type: String, enum: ['DRAFT', 'PUBLISHED', 'HIDDEN'], default: 'DRAFT' },
     publishedAt: { type: Date, default: null },
+    // Chỉ có giá trị true, bỏ ghim thì xoá trường: bài cũ không có trường này nên false sẽ xếp lệch với chúng
+    pinned: { type: Boolean },
   },
   { timestamps: true },
 );
 
 postSchema.index({ slug: 1 }, { unique: true, partialFilterExpression: { slug: { $type: 'string' } } });
+// Mỗi lúc chỉ một bài được ghim
+postSchema.index({ pinned: 1 }, { unique: true, partialFilterExpression: { pinned: true } });
 postSchema.index({ status: 1, category: 1, publishedAt: -1 });
 
 export const Post = mongoose.model('Post', postSchema);

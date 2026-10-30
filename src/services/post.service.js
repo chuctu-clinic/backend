@@ -13,6 +13,7 @@ export function postView(p, { full = true } = {}) {
     thumbnailUrl: p.thumbnailUrl,
     authorName: p.authorName,
     status: p.status,
+    pinned: Boolean(p.pinned),
     publishedAt: p.publishedAt,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
@@ -22,15 +23,18 @@ export function postView(p, { full = true } = {}) {
 
 // ---------- Công khai: chỉ bài đã đăng (BR.08) ----------
 
-export async function listPublished({ category, q, skip, limit }) {
+export async function listPublished({ category, q, skip, limit, withFeatured = false }) {
   const filter = { status: 'PUBLISHED', category: { $ne: 'TRANG' } };
   if (category && POST_CATEGORIES[category]) filter.category = category;
   if (q) filter.title = new RegExp(escapeRegex(q.trim()), 'i');
+  // Bài nổi bật đứng yên ở mọi trang: bài ghim, chưa ghim thì bài mới nhất; phân trang chỉ chia các bài còn lại
+  const featured = withFeatured ? await Post.findOne(filter).sort({ pinned: -1, publishedAt: -1 }) : null;
+  const rest = featured ? { ...filter, _id: { $ne: featured._id } } : filter;
   const [items, total] = await Promise.all([
-    Post.find(filter).sort({ publishedAt: -1 }).skip(skip).limit(limit),
+    Post.find(rest).sort({ publishedAt: -1 }).skip(skip).limit(limit),
     Post.countDocuments(filter),
   ]);
-  return { items: items.map((p) => postView(p, { full: false })), total };
+  return { featured: featured && postView(featured, { full: false }), items: items.map((p) => postView(p, { full: false })), total };
 }
 
 export async function getPublished(idOrSlug) {
@@ -61,7 +65,8 @@ export async function adminList({ status, category, q, skip, limit }) {
   if (category && category !== 'TRANG' && POST_CATEGORIES[category]) filter.category = category;
   if (q) filter.title = new RegExp(escapeRegex(q.trim()), 'i');
   const [items, total] = await Promise.all([
-    Post.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit),
+    // Xếp theo ngày tạo: bài mới vào đầu danh sách, sửa, ẩn hay ghim bài không làm các trang xáo trộn
+    Post.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit),
     Post.countDocuments(filter),
   ]);
   const counts = await Post.aggregate([{ $match: { category: { $ne: 'TRANG' } } }, { $group: { _id: '$status', n: { $sum: 1 } } }]);
@@ -107,9 +112,24 @@ export async function updatePost(id, data) {
   if (post.status === 'PUBLISHED') {
     assertPublishable(post);
     if (!post.publishedAt) post.publishedAt = new Date();
+  } else {
+    // Bài rời website thì thôi ghim, để lúc công khai lại không tự chiếm chỗ bài đang ghim
+    post.pinned = undefined;
   }
   await post.save();
   return postView(post);
+}
+
+export async function setPinned(id, pinned) {
+  const post = await Post.findById(id);
+  if (!post) throw notFound('Không tìm thấy bài viết.');
+  if (pinned && (post.status !== 'PUBLISHED' || post.category === 'TRANG')) {
+    throw badRequest('Chỉ ghim được bài viết đã công khai.', undefined, 'NOT_PINNABLE');
+  }
+  // Không đổi giờ cập nhật: ghim không phải là sửa bài
+  await Post.updateMany(pinned ? { pinned: true } : { _id: post._id }, { $unset: { pinned: 1 } }, { timestamps: false });
+  if (pinned) await Post.updateOne({ _id: post._id }, { $set: { pinned: true } }, { timestamps: false });
+  return postView(await Post.findById(id));
 }
 
 export async function deletePost(id) {
