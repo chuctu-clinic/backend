@@ -11,7 +11,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -200,13 +199,11 @@ class AuthTest extends IntegrationTest {
     @DisplayName("tiếp tân không dùng được chức năng của Admin (BR.05)")
     void tiepTanKhongDungChucNangAdmin() {
         var agent = client().staff();
-        // Node gọi /api/admin/dashboard (Task 11); dùng route thật cùng phân quyền
         agent.get("/api/staff/queue").expectStatus(200);
-        agent.get("/api/admin/posts").expectStatus(403);
+        agent.get("/api/admin/dashboard").expectStatus(403);
     }
 
     @Test
-    @Disabled("Task 11")
     @DisplayName("tài khoản bị khoá không đăng nhập được và phiên cũ hết hiệu lực ngay (BR.33)")
     void taiKhoanBiKhoa() {
         var admin = client().staff("admin@chuctu.vn");
@@ -219,7 +216,6 @@ class AuthTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 11")
     @DisplayName("tài khoản nội bộ mới phải đổi mật khẩu tạm trước khi làm việc")
     void taiKhoanNoiBoMoiDoiMatKhauTam() {
         var admin = client().staff("admin@chuctu.vn");
@@ -305,7 +301,6 @@ class AuthTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 11")
     @DisplayName("admin sửa tên hoặc số điện thoại ở Quản lý tài khoản thì email giữ nguyên")
     void adminSuaTenGiuEmail() {
         var admin = client().staff("admin@chuctu.vn");
@@ -320,7 +315,6 @@ class AuthTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 11")
     @DisplayName("mật khẩu tạm phải từ 8 ký tự")
     void matKhauTamTu8KyTu() {
         var admin = client().staff("admin@chuctu.vn");

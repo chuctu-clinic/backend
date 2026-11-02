@@ -43,7 +43,7 @@ class ErrorHandlerTest extends IntegrationTest {
     @Test
     @DisplayName("JSON sai cú pháp trả về 400")
     void jsonSaiCuPhap() {
-        var res = client().post("/api/auth/_probe/login", "{sai").expectStatus(400);
+        var res = client().post("/api/auth/login", "{sai").expectStatus(400);
         assertThat(res.json().get("error").get("code").stringValue()).isEqualTo("BAD_JSON");
         assertThat(res.json().get("error").get("message").stringValue()).isEqualTo("Dữ liệu gửi lên không hợp lệ.");
     }
@@ -111,7 +111,7 @@ class ErrorHandlerTest extends IntegrationTest {
     @Test
     @DisplayName("[java] sai phương thức cũng trả 404 NOT_FOUND như Express")
     void saiPhuongThuc() {
-        var res = client().post("/api/auth/_probe/instants", "{}").expectStatus(404);
+        var res = client().post("/api/auth/me", "{}").expectStatus(404);
         assertThat(res.json().get("error").get("message").stringValue()).isEqualTo("Không tìm thấy đường dẫn.");
     }
 }

@@ -1,7 +1,7 @@
 package vn.chuctu.clinic.post;
 
 /** Mã trong đường dẫn công khai: chuỗi toàn chữ số ASCII và vừa một long là mã số, còn lại thì không. */
-final class Ids {
+public final class Ids {
 
     private Ids() {}
 
@@ -15,7 +15,7 @@ final class Ids {
     }
 
     /** Mã số, hoặc null nếu không phải toàn chữ số hay quá lớn cho một long. */
-    static Long parse(String s) {
+    public static Long parse(String s) {
         if (!allDigits(s)) return null;
         try {
             return Long.parseLong(s);

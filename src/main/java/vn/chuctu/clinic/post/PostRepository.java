@@ -46,4 +46,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     java.util.Optional<Post> findBySlugAndStatus(String slug, String status);
 
     java.util.Optional<Post> findByIdAndStatus(Long id, String status);
+
+    /** Bản nháp mới sửa gần nhất (tổng quan của Admin). */
+    List<Post> findTop5ByStatusOrderByUpdatedAtDescIdDesc(String status);
 }

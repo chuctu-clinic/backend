@@ -35,6 +35,12 @@ public class PublicController {
         this.clock = clock;
     }
 
+    /** Kiểm tra máy chủ còn sống (app.js). */
+    @GetMapping("/health")
+    Map<String, Object> health() {
+        return Map.of("ok", true);
+    }
+
     private static List<Map<String, String>> valueLabel(Map<String, String> labels) {
         return labels.entrySet().stream().map(e -> {
             Map<String, String> item = new LinkedHashMap<>();

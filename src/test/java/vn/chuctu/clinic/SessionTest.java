@@ -155,7 +155,7 @@ class SessionTest extends IntegrationTest {
         client().get("/api/me").expectStatus(401);
         client().get("/api/staff/patients").expectStatus(401);
         client().get("/api/admin/posts").expectStatus(401);
-        client().get("/api/auth/_probe/require").expectStatus(401);
+        client().post("/api/auth/change-password", "{}").expectStatus(401);
         var unauthorized = client().get("/api/me").json().get("error");
         assertThat(unauthorized.get("code").stringValue()).isEqualTo("UNAUTHORIZED");
         assertThat(unauthorized.get("message").stringValue()).isEqualTo("Cô chú vui lòng đăng nhập để tiếp tục.");
@@ -175,7 +175,7 @@ class SessionTest extends IntegrationTest {
         var admin = loginAs(createUser("ADMIN"));
         admin.get("/api/staff/patients").expectStatus(200);
         admin.get("/api/admin/posts").expectStatus(200);
-        admin.get("/api/auth/_probe/require").expectStatus(200);
+        admin.get("/api/auth/me").expectStatus(200);
     }
 
     @Test
@@ -190,7 +190,7 @@ class SessionTest extends IntegrationTest {
         // Vai trò sai vẫn báo thông thường; API /auth vẫn dùng được để đổi mật khẩu
         assertThat(browser.get("/api/admin/posts").expectStatus(403).json().get("error").get("message").stringValue())
                 .isEqualTo("Tài khoản không có quyền thực hiện thao tác này.");
-        browser.get("/api/auth/_probe/require").expectStatus(200);
+        browser.get("/api/auth/me").expectStatus(200);
     }
 
     @Test

@@ -43,11 +43,17 @@ class ContractTest extends IntegrationTest {
     @Test
     @DisplayName("[java] thời điểm có 3 số mili giây")
     void thoiDiemCo3SoMiliGiay() {
-        var res = client().get("/api/auth/_probe/instants").expectStatus(200);
-        assertThat(res.text()).contains("\"whole\":\"2026-11-02T03:00:00.000Z\"", "\"tenths\":\"2026-11-02T03:00:00.120Z\"",
-                "\"millis\":\"2026-11-02T03:00:00.123Z\"");
-        res.json().properties().forEach(e -> assertThat(e.getValue().stringValue())
-                .matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z"));
+        // Ba cột thời điểm của tài khoản: tròn giây, một chữ số lẻ phần chục, đủ ba chữ số mili giây
+        var user = createUser("USER");
+        jdbc.update("UPDATE users SET created_at = '2026-11-02 03:00:00.000', last_login_at = '2026-11-02 03:00:00.120', "
+                + "info_updated_at = '2026-11-02 03:00:00.123' WHERE id = ?", user.getId());
+        var res = loginAs(user).get("/api/auth/me").expectStatus(200);
+        assertThat(res.text()).contains("\"createdAt\":\"2026-11-02T03:00:00.000Z\"", "\"lastLoginAt\":\"2026-11-02T03:00:00.120Z\"",
+                "\"infoUpdatedAt\":\"2026-11-02T03:00:00.123Z\"");
+        for (String field : new String[] {"createdAt", "lastLoginAt", "infoUpdatedAt"}) {
+            assertThat(res.json().get("user").get(field).stringValue())
+                    .matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z");
+        }
     }
 
     @Test

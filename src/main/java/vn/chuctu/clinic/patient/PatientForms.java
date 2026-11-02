@@ -99,21 +99,29 @@ public final class PatientForms {
             }
         }
         Opt<String> gender = enumField(b, "gender", GENDER_KEYS, GENDER_MESSAGE, false, false);
-        Opt<String> address = Opt.absent();
-        JsonNode addressNode = b.node("address");
-        if (addressNode != null) {
-            if (!addressNode.isString()) {
-                b.abort("address", ADDRESS_REQUIRED);
-            } else {
-                String s = Body.jsTrim(addressNode.stringValue());
-                if (s.isEmpty()) b.fail("address", ADDRESS_REQUIRED);
-                else if (s.length() > 300) b.fail("address", "Tối đa 300 ký tự.");
-                address = Opt.of(s);
-            }
-        }
+        Opt<String> address = accountAddress(b);
         AccountData data = new AccountData(fullName, dob, gender, address, expectedUpdatedAt(b));
         b.check();
         return data;
+    }
+
+    /** accountUpdateSchema.shape.address: nếu gửi lên thì phải có giá trị, không xoá trắng được. */
+    public static Opt<String> accountAddress(Body b) {
+        JsonNode addressNode = b.node("address");
+        if (addressNode == null) return Opt.absent();
+        if (!addressNode.isString()) {
+            b.abort("address", ADDRESS_REQUIRED);
+            return Opt.absent();
+        }
+        String s = Body.jsTrim(addressNode.stringValue());
+        if (s.isEmpty()) b.fail("address", ADDRESS_REQUIRED);
+        else if (s.length() > 300) b.fail("address", "Tối đa 300 ký tự.");
+        return Opt.of(s);
+    }
+
+    /** Mốc expectedUpdatedAt của người sửa (không gửi: null). */
+    public static String expectedUpdatedAt(Body b) {
+        return b.optionalString("expectedUpdatedAt", Stamp::problem).get();
     }
 
     // ---------- Từng ô ----------
@@ -142,10 +150,6 @@ public final class PatientForms {
         Opt<String> email = b.clearableString("email", Body::jsTrim, s -> !Body.isEmail(s) ? "Email chưa đúng định dạng."
                 : s.length() > 200 ? "String must contain at most 200 character(s)" : null);
         return truthy(email) ? Opt.of(email.get().toLowerCase(Locale.ROOT)) : email;
-    }
-
-    private static String expectedUpdatedAt(Body b) {
-        return b.optionalString("expectedUpdatedAt", Stamp::problem).get();
     }
 
     /** Ngày có thật và trước hôm nay; không gửi là absent, null là xoá. */

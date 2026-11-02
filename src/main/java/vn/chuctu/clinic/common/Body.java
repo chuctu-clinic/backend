@@ -30,7 +30,7 @@ public final class Body {
         /** z.string().trim().toLowerCase().min(1).email(): regex email của zod 3. */
         public static final Rule EMAIL = new Rule("Vui lòng nhập email.", true, v -> v.toLowerCase(java.util.Locale.ROOT), 1,
                 "Vui lòng nhập email.", Integer.MAX_VALUE, null,
-                s -> ZOD_EMAIL.matcher(s).matches() ? null : "Email chưa đúng, ví dụ ten@email.com.");
+                s -> !ZOD_EMAIL.matcher(s).matches() ? "Email chưa đúng, ví dụ ten@email.com." : tooLongEmail(s));
 
         public static Rule required(String requiredMessage) {
             return new Rule(requiredMessage, false, UnaryOperator.identity(), 0, null, Integer.MAX_VALUE, null, null);
@@ -52,6 +52,18 @@ public final class Body {
         public Rule problem(Function<String, String> check) {
             return new Rule(requiredMessage, trim, transform, min, minMessage, max, maxMessage, check);
         }
+    }
+
+    /**
+     * Cột email chứa tối đa 700 ký tự (V2__widen_long_inputs.sql). Zod không giới hạn độ dài nên Node nhận mọi email đúng
+     * định dạng; email dài hơn cột thì Java báo lỗi ở ô email thay vì 500.
+     */
+    public static final int EMAIL_MAX = 700;
+    public static final String EMAIL_TOO_LONG = "Email tối đa " + EMAIL_MAX + " ký tự.";
+
+    /** Lý do email quá dài, null nếu vừa cột. Gọi sau khi đã biết email đúng định dạng. */
+    public static String tooLongEmail(String email) {
+        return email.length() > EMAIL_MAX ? EMAIL_TOO_LONG : null;
     }
 
     private static final Pattern ZOD_EMAIL = Pattern.compile(

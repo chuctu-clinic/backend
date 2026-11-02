@@ -8,7 +8,6 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -172,7 +171,6 @@ class ProfilesTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 11")
     @DisplayName("Admin sửa tài khoản thì hồ sơ chính chủ đổi theo, cả số điện thoại")
     void adminSuaTaiKhoan() {
         var admin = client().staff("admin@chuctu.vn");
@@ -186,7 +184,6 @@ class ProfilesTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 11")
     @DisplayName("hồ sơ chính chủ đang khoá chỉ nhận số đăng nhập, mở khoá thì nhận nốt các ô còn lại")
     void hoSoDangKhoaChiNhanSoDangNhap() {
         var admin = client().staff("admin@chuctu.vn");
@@ -257,7 +254,6 @@ class ProfilesTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 11")
     @DisplayName("Admin không xoá trắng được địa chỉ tài khoản")
     void adminKhongXoaTrangDiaChi() {
         var admin = client().staff("admin@chuctu.vn");
@@ -271,7 +267,6 @@ class ProfilesTest extends IntegrationTest {
     // ---------- Hai nơi cùng sửa một người (không đè mất thay đổi) ----------
 
     @Test
-    @Disabled("Task 11")
     @DisplayName("Admin vừa đổi tên thì người dùng lưu hồ sơ bản cũ bị từ chối, tải lại rồi lưu được")
     void adminVuaDoiTen() {
         var admin = client().staff("admin@chuctu.vn");
@@ -292,7 +287,6 @@ class ProfilesTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 11")
     @DisplayName("người dùng vừa đổi hồ sơ thì Admin lưu tài khoản bản cũ bị từ chối")
     void nguoiDungVuaDoiHoSo() {
         var admin = client().staff("admin@chuctu.vn");
@@ -433,7 +427,6 @@ class ProfilesTest extends IntegrationTest {
     // ---------- Hồ sơ chính chủ thiếu thông tin (tài khoản do Admin tạo) ----------
 
     @Test
-    @Disabled("Task 11")
     @DisplayName("phải bổ sung ngày sinh, giới tính, địa chỉ rồi mới đặt được lịch")
     void phaiBoSungThongTinRoiMoiDatLich() {
         var admin = client().staff("admin@chuctu.vn");
@@ -452,7 +445,6 @@ class ProfilesTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 11")
     @DisplayName("tiếp tân vẫn đặt hộ được khi hồ sơ thiếu thông tin")
     void tiepTanVanDatHoDuoc() {
         var admin = client().staff("admin@chuctu.vn");
