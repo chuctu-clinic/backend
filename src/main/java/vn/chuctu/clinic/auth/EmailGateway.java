@@ -64,7 +64,7 @@ public class EmailGateway {
                 String text = intro + "\n\nMã xác nhận: " + code + "\nMã dùng được trong " + Rules.OTP_TTL_MINUTES + " phút.\n\n"
                         + OUTRO + "\n\nPhòng khám Chúc Từ";
                 try {
-                    mailSender.send(email, config.mailFrom, subject, text);
+                    mailSender.send(email, config.mailFrom, subject, text, html(intro, code));
                 } catch (RuntimeException e) {
                     log.error("[EMAIL] Gửi qua SMTP không được: {}", e.getMessage());
                     throw new ApiException(502, "EMAIL_FAILED",
@@ -73,6 +73,18 @@ public class EmailGateway {
             }
             default -> throw new IllegalStateException("EMAIL_PROVIDER không hợp lệ: " + config.emailProvider);
         }
+    }
+
+    /** Cùng nội dung HTML với message() của emailGateway.js. */
+    static String html(String intro, String code) {
+        return "<div style=\"font-family:Arial,sans-serif;font-size:16px;line-height:1.6;color:#2a2118;max-width:520px\">\n"
+                + "  <p>" + intro + "</p>\n"
+                + "  <p style=\"margin:24px 0 8px\">Mã xác nhận của bạn:</p>\n"
+                + "  <p style=\"font-size:32px;font-weight:700;letter-spacing:8px;color:#2e5b37;margin:0 0 8px\">" + code + "</p>\n"
+                + "  <p>Mã dùng được trong " + Rules.OTP_TTL_MINUTES + " phút.</p>\n"
+                + "  <p style=\"color:#6b5e4e\">" + OUTRO + "</p>\n"
+                + "  <p>Phòng khám Chúc Từ</p>\n"
+                + "</div>";
     }
 
     /** Mã mẫu cố định (mặc định 123456) để thử luồng khi phát triển; kiểm thử và production luôn dùng mã ngẫu nhiên. */

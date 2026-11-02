@@ -13,15 +13,15 @@ import vn.chuctu.clinic.auth.MailSender;
  */
 public final class FakeMail implements MailSender {
 
-    public record Message(String to, String from, String subject, String text) {}
+    public record Message(String to, String from, String subject, String text, String html) {}
 
     public final List<Message> sent = new CopyOnWriteArrayList<>();
     public volatile boolean failing;
 
     @Override
-    public void send(String to, String from, String subject, String text) {
+    public void send(String to, String from, String subject, String text, String html) {
         if (failing) throw new IllegalStateException("Invalid login");
-        sent.add(new Message(to, from, subject, text));
+        sent.add(new Message(to, from, subject, text, html));
     }
 
     public void reset() {

@@ -1,9 +1,13 @@
 package vn.chuctu.clinic.auth;
 
+import jakarta.mail.Message;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimeMultipart;
 import java.util.Properties;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
 import vn.chuctu.clinic.common.AppProperties;
 
@@ -52,18 +56,35 @@ public class SmtpMailSender implements MailSender {
         return s;
     }
 
+    /**
+     * Dựng thư không kết nối: tên hiển thị trong From và tiêu đề mã hoá RFC 2047 (UTF-8), nội dung là
+     * multipart/alternative gồm bản văn bản rồi bản HTML.
+     */
+    MimeMessage buildMessage(JavaMailSenderImpl s, String to, String from, String subject, String text, String html)
+            throws MessagingException, java.io.UnsupportedEncodingException {
+        MimeMessage message = s.createMimeMessage();
+        InternetAddress sender = new InternetAddress(from);
+        if (sender.getPersonal() != null) sender.setPersonal(sender.getPersonal(), "UTF-8");
+        message.setFrom(sender);
+        message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
+        message.setSubject(subject, "UTF-8");
+        MimeMultipart alternative = new MimeMultipart("alternative");
+        MimeBodyPart plain = new MimeBodyPart();
+        plain.setText(text, "UTF-8", "plain");
+        alternative.addBodyPart(plain);
+        MimeBodyPart rich = new MimeBodyPart();
+        rich.setText(html, "UTF-8", "html");
+        alternative.addBodyPart(rich);
+        message.setContent(alternative);
+        return message;
+    }
+
     @Override
-    public void send(String to, String from, String subject, String text) {
+    public void send(String to, String from, String subject, String text, String html) {
         JavaMailSenderImpl s = sender();
         try {
-            MimeMessage message = s.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
-            helper.setFrom(from);
-            helper.setTo(to);
-            helper.setSubject(subject);
-            helper.setText(text, false);
-            s.send(message);
-        } catch (jakarta.mail.MessagingException e) {
+            s.send(buildMessage(s, to, from, subject, text, html));
+        } catch (MessagingException | java.io.UnsupportedEncodingException e) {
             throw new IllegalStateException(e.getMessage(), e);
         }
     }

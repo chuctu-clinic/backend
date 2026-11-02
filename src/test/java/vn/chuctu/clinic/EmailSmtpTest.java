@@ -38,6 +38,18 @@ class EmailSmtpTest extends IntegrationTest {
         // Mã trong email dùng được để xác nhận
         Matcher m = Pattern.compile("Mã xác nhận: (\\d{6})").matcher(sent.text());
         assertThat(m.find()).isTrue();
+        String code = m.group(1);
+
+        // Bản HTML giống emailGateway.js: cùng khung, mã to ở giữa, cùng lời mở đầu và lời dặn
+        assertThat(sent.html())
+                .startsWith("<div style=\"font-family:Arial,sans-serif;font-size:16px;line-height:1.6;color:#2a2118;max-width:520px\">\n")
+                .contains("  <p>Bạn vừa yêu cầu đặt lại mật khẩu tài khoản nội bộ của Phòng khám Chúc Từ.</p>\n")
+                .contains("  <p style=\"margin:24px 0 8px\">Mã xác nhận của bạn:</p>\n")
+                .contains("  <p style=\"font-size:32px;font-weight:700;letter-spacing:8px;color:#2e5b37;margin:0 0 8px\">" + code + "</p>\n")
+                .contains("  <p>Mã dùng được trong 5 phút.</p>\n")
+                .contains("  <p style=\"color:#6b5e4e\">Nếu không phải bạn yêu cầu, hãy bỏ qua email này. "
+                        + "Không đưa mã cho bất kỳ ai, kể cả nhân viên phòng khám.</p>\n")
+                .endsWith("  <p>Phòng khám Chúc Từ</p>\n</div>");
         client().post("/api/auth/staff/forgot-password/verify", Map.of("email", "letan@chuctu.vn", "code", m.group(1)))
                 .expectStatus(200);
     }
