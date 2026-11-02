@@ -182,7 +182,7 @@ class AuthTest extends IntegrationTest {
     void nguoiDungKhongVaoKhuTiepTan() {
         var agent = client().registerUser("0911000005", "Nguyễn Văn A");
         // Một phiên chung: đã đăng nhập nhưng vai trò USER thì bị từ chối quyền
-        agent.get("/api/staff/patients").expectStatus(403);
+        agent.get("/api/staff/queue").expectStatus(403);
         agent.get("/api/admin/accounts").expectStatus(403);
     }
 
@@ -200,8 +200,8 @@ class AuthTest extends IntegrationTest {
     @DisplayName("tiếp tân không dùng được chức năng của Admin (BR.05)")
     void tiepTanKhongDungChucNangAdmin() {
         var agent = client().staff();
-        // Node gọi /api/staff/queue (Task 8) và /api/admin/dashboard (Task 11); dùng route thật cùng phân quyền
-        agent.get("/api/staff/patients").expectStatus(200);
+        // Node gọi /api/admin/dashboard (Task 11); dùng route thật cùng phân quyền
+        agent.get("/api/staff/queue").expectStatus(200);
         agent.get("/api/admin/_probe").expectStatus(403);
     }
 
@@ -335,13 +335,12 @@ class AuthTest extends IntegrationTest {
     @DisplayName("đăng nhập nội bộ thay phiên khách")
     void dangNhapNoiBoThayPhienKhach() {
         var agent = client().registerUser("0911000099", "Người dùng một phiên");
-        // Node gọi /api/staff/queue (Task 8); dùng route hồ sơ bệnh nhân cùng phân quyền
         agent.get("/api/me/patients").expectStatus(200);
         agent.post("/api/auth/staff/login", Map.of("identifier", "letan@chuctu.vn", "password", "ChucTu@2026")).expectStatus(200);
         var me = agent.get("/api/auth/me").expectStatus(200).json();
         assertThat(me.get("user").get("role").stringValue()).isEqualTo("RECEPTIONIST");
         agent.get("/api/me/patients").expectStatus(403);
-        agent.get("/api/staff/patients").expectStatus(200);
+        agent.get("/api/staff/queue").expectStatus(200);
     }
 
     @Test
@@ -367,7 +366,7 @@ class AuthTest extends IntegrationTest {
     void ctSessionHongKhongDungCtStaff() {
         // Bản Java bỏ hẳn ct_staff (xem SessionTest): chỉ ct_session bị xoá, ct_staff không bao giờ được dùng
         var res = client().cookie("ct_session", "rac").cookie("ct_staff", tokenOf(staffByEmail("letan@chuctu.vn")))
-                .get("/api/staff/patients").expectStatus(401);
+                .get("/api/staff/queue").expectStatus(401);
         assertThat(setCookies(res)).anySatisfy(c -> assertThat(c).startsWith("ct_session=;").contains("Max-Age=0"));
     }
 
@@ -379,19 +378,19 @@ class AuthTest extends IntegrationTest {
         var agent = client();
         var a = agent.post("/api/auth/staff/login", Map.of("identifier", "letan@chuctu.vn", "password", "ChucTu@2026")).expectStatus(200);
         String idA = a.json().get("user").get("id").stringValue();
-        agent.header("X-Session-User", idA).get("/api/staff/patients").expectStatus(200);
+        agent.header("X-Session-User", idA).get("/api/staff/queue").expectStatus(200);
 
         // Tab khác (cùng cookie) đăng nhập bằng tài khoản admin
         var b = agent.post("/api/auth/staff/login", Map.of("identifier", "admin@chuctu.vn", "password", "ChucTu@2026")).expectStatus(200);
         String idB = b.json().get("user").get("id").stringValue();
         assertThat(idB).isNotEqualTo(idA);
 
-        var res = agent.get("/api/staff/patients").expectStatus(409);
+        var res = agent.get("/api/staff/queue").expectStatus(409);
         assertThat(errorCode(res)).isEqualTo("SESSION_CHANGED");
         // Tab vẫn xem được phiên hiện tại để tự tải lại
         var me = agent.get("/api/auth/me").expectStatus(200).json();
         assertThat(me.get("user").get("id").stringValue()).isEqualTo(idB);
-        agent.header("X-Session-User", idB).get("/api/staff/patients").expectStatus(200);
+        agent.header("X-Session-User", idB).get("/api/staff/queue").expectStatus(200);
     }
 
     @Test
@@ -400,7 +399,7 @@ class AuthTest extends IntegrationTest {
         var agent = client().staff();
         var me = agent.get("/api/auth/me").expectStatus(200).json();
         agent.post("/api/auth/logout", Map.of()).expectStatus(200);
-        var res = agent.header("X-Session-User", me.get("user").get("id").stringValue()).get("/api/staff/patients").expectStatus(409);
+        var res = agent.header("X-Session-User", me.get("user").get("id").stringValue()).get("/api/staff/queue").expectStatus(409);
         assertThat(errorCode(res)).isEqualTo("SESSION_CHANGED");
     }
 
@@ -781,11 +780,11 @@ class AuthTest extends IntegrationTest {
         var agent = client();
         var login = agent.post("/api/auth/staff/login", Map.of("identifier", "0900000099", "password", "TamThoi123")).expectStatus(200);
         assertThat(login.json().get("user").get("mustChangePassword").booleanValue()).isTrue();
-        agent.get("/api/staff/patients").expectStatus(403);
+        agent.get("/api/staff/queue").expectStatus(403);
         var changed = agent.post("/api/auth/change-password", Map.of("currentPassword", "TamThoi123", "newPassword", "MatKhauMoi456"))
                 .expectStatus(200);
         assertThat(changed.json().get("user").get("mustChangePassword").booleanValue()).isFalse();
-        agent.get("/api/staff/patients").expectStatus(200);
+        agent.get("/api/staff/queue").expectStatus(200);
     }
 
     @Test

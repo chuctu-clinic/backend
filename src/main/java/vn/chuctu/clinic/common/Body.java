@@ -276,6 +276,20 @@ public final class Body {
         return Opt.of(s.isEmpty() ? null : s);
     }
 
+    /** z.boolean(): bắt buộc. */
+    public boolean requiredBoolean(String field) {
+        JsonNode node = field(field);
+        if (node == null) {
+            if (objectBody) abort(field, "Required");
+            return false;
+        }
+        if (!node.isBoolean()) {
+            abort(field, "Expected boolean, received " + typeName(node));
+            return false;
+        }
+        return node.booleanValue();
+    }
+
     /** z.boolean().optional().default(fallback). */
     public boolean optionalBoolean(String field, boolean fallback) {
         JsonNode node = field(field);

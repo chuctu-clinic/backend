@@ -57,15 +57,17 @@ final class AppointmentForms {
         return new BookingRequest(patientId, serviceType, date, start, rebook.get());
     }
 
-    /** Tiếp tân đặt hộ. checkInNow chỉ được kiểm tra dạng; việc check-in ngay là của Task 8. */
-    static BookingRequest counterBooking(Body b) {
+    /** Tiếp tân đặt hộ; checkInNow = check-in ngay sau khi tạo phiếu. */
+    record CounterBooking(BookingRequest request, boolean checkInNow) {}
+
+    static CounterBooking counterBooking(Body b) {
         Long patientId = requiredId(b, "patientId");
         String serviceType = serviceType(b);
         LocalDate date = b.requiredDate("slotDate");
         String start = slotStart(b);
-        b.optionalBoolean("checkInNow", false);
+        boolean checkInNow = b.optionalBoolean("checkInNow", false);
         b.check();
-        return new BookingRequest(patientId, serviceType, date, start, null);
+        return new CounterBooking(new BookingRequest(patientId, serviceType, date, start, null), checkInNow);
     }
 
     record Slot(LocalDate date, String start) {}

@@ -17,11 +17,12 @@ import tools.jackson.databind.JsonNode;
 import vn.chuctu.clinic.account.User;
 import vn.chuctu.clinic.common.Body;
 import vn.chuctu.clinic.common.VnTime;
+import vn.chuctu.clinic.queue.QueueService;
 import vn.chuctu.clinic.security.CurrentUser;
 
 /**
  * Lịch trong ngày, đặt hộ, đổi giờ và huỷ tại quầy (UC.7.1, UC.7.2, UC.7.5 đến UC.7.7), phần phiếu khám của
- * routes/staff.routes.js. Check-in, vào phòng (Task 8) và bệnh án (Task 9) nối vào các chỗ ghi chú bên dưới.
+ * routes/staff.routes.js. Check-in và vào phòng nằm ở QueueController; bệnh án (Task 9) nối vào chỗ ghi chú bên dưới.
  */
 @RestController
 @RequestMapping("/api/staff")
@@ -29,11 +30,14 @@ public class StaffAppointmentController {
 
     private final AppointmentService appointments;
     private final SlotService slots;
+    private final QueueService queue;
     private final CurrentUser currentUser;
     private final Clock clock;
 
-    public StaffAppointmentController(AppointmentService appointments, SlotService slots, CurrentUser currentUser, Clock clock) {
+    public StaffAppointmentController(AppointmentService appointments, SlotService slots, QueueService queue, CurrentUser currentUser,
+            Clock clock) {
         this.appointments = appointments;
+        this.queue = queue;
         this.slots = slots;
         this.currentUser = currentUser;
         this.clock = clock;
@@ -46,8 +50,10 @@ public class StaffAppointmentController {
         AppointmentService.DayView view = appointments.listDay(day, status, q);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("date", day.toString());
-        // Task 8: mỗi phiếu kèm check-in của nó (queue.checkinsByAppointment); đến lúc đó trường này là null
-        view.items().forEach(item -> item.put("checkin", null));
+        // Mỗi phiếu kèm check-in của nó (null nếu chưa check-in hoặc đã hoàn tác)
+        Map<Long, Map<String, Object>> checkins =
+                queue.checkinsByAppointment(view.items().stream().map(item -> Long.parseLong((String) item.get("id"))).toList());
+        view.items().forEach(item -> item.put("checkin", checkins.get(Long.parseLong((String) item.get("id")))));
         out.put("items", view.items());
         out.put("summary", view.summary());
         return out;
@@ -91,9 +97,11 @@ public class StaffAppointmentController {
     ResponseEntity<Map<String, Object>> book(@RequestBody(required = false) JsonNode json) {
         User staff = currentUser.require();
         Body body = Body.of(json);
-        var request = AppointmentForms.counterBooking(body);
-        // Task 8: checkInNow kiểm tra giờ nhận bệnh trước khi tạo phiếu, rồi check-in ngay sau khi tạo
-        Appointment appt = appointments.counterBook(staff, request);
+        var form = AppointmentForms.counterBooking(body);
+        // Ngoài giờ nhận bệnh thì báo trước, không tạo phiếu rồi mới lỗi ở bước check-in
+        if (form.checkInNow()) queue.assertReceivingTime();
+        Appointment appt = appointments.counterBook(staff, form.request());
+        if (form.checkInNow()) queue.checkIn(staff, appt.getId());
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("appointment", appointments.getStaffAppointment(appt.getId())));
     }
 

@@ -89,6 +89,10 @@ public final class TestClient {
         return send("POST", path, MAPPER.writeValueAsString(body));
     }
 
+    public Result put(String path, Object body) {
+        return send("PUT", path, MAPPER.writeValueAsString(body));
+    }
+
     public Result patch(String path, Object body) {
         return send("PATCH", path, MAPPER.writeValueAsString(body));
     }

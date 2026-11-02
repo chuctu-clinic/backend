@@ -34,6 +34,7 @@ import vn.chuctu.clinic.common.VnTime;
 import vn.chuctu.clinic.patient.Patient;
 import vn.chuctu.clinic.patient.PatientRepository;
 import vn.chuctu.clinic.patient.PatientService;
+import vn.chuctu.clinic.queue.QueueService;
 
 /**
  * Đặt lịch, huỷ, đổi giờ và xem phiếu khám (services/appointment.service.js). Mỗi thao tác ghi chạy trong một giao dịch
@@ -67,9 +68,12 @@ public class AppointmentService {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
     private final Clock clock;
+    /** QueueService không phụ thuộc ngược vào AppointmentService nên không có vòng bean, không cần @Lazy. */
+    private final QueueService queue;
 
     public AppointmentService(AppointmentRepository appointments, PatientRepository patients, SlotService slots, Counters counters,
-            JdbcTemplate jdbc, PlatformTransactionManager transactionManager, Clock clock) {
+            JdbcTemplate jdbc, PlatformTransactionManager transactionManager, Clock clock, QueueService queue) {
+        this.queue = queue;
         this.appointments = appointments;
         this.patients = patients;
         this.slots = slots;
@@ -204,9 +208,8 @@ public class AppointmentService {
                 + "updated_at = ? WHERE id = ? AND status IN (" + ACTIVE_LIST + ")", isBlank(reason) ? null : reason, by.getId(), now, now,
                 appt.getId());
         if (changed != 1) throw Errors.conflict("Phiếu khám vừa thay đổi trạng thái, cô chú tải lại trang.", "STALE");
-        // Người đã check-in mà huỷ phiếu thì rời hàng đợi (Task 8 thay bằng QueueService.leaveQueue)
-        jdbc.update("UPDATE checkins SET status = 'REVERTED', seat_no = NULL WHERE appointment_id = ? AND status IN ('WAITING', 'IN_ROOM')",
-                appt.getId());
+        // Người đã check-in mà huỷ phiếu thì rời hàng đợi và nhả ghế, cùng giao dịch với việc huỷ
+        queue.leaveQueue(appt.getId());
         slots.release(appt.getSlotDate(), appt.getSlotStart());
     }
 
