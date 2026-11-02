@@ -35,7 +35,7 @@ public class SlotService {
      * {@code count < 6}, tăng đúng một lần và số dòng đổi cho biết đã giữ được chỗ hay chưa (Connector/J trả số dòng
      * khớp nên không dùng số dòng của bước 1).
      *
-     * <p>Bước 1 dùng {@code ON DUPLICATE KEY UPDATE count = count} thay cho {@code INSERT IGNORE} của spec: khi dòng đã
+     * <p>Bước 1 dùng {@code ON DUPLICATE KEY UPDATE count = count} thay cho {@code INSERT IGNORE}: khi dòng đã
      * có, INSERT IGNORE giữ khoá chia sẻ rồi UPDATE nâng lên khoá độc quyền, nên nhiều người đặt cùng khung bị deadlock
      * (đo được ở 9 luồng). ON DUPLICATE KEY UPDATE lấy ngay khoá độc quyền nên các giao dịch cùng khung xếp hàng.
      */

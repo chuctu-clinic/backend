@@ -124,16 +124,22 @@ class BookingConcurrencyTest extends IntegrationTest {
         LocalDate today = VnTime.today(morning);
         Instant evening = VnTime.slotInstant(today, "17:30");
         long patient = newPatient();
+        // Phiếu thứ hai cùng khung đã check-in nên tự huỷ bỏ qua: nhả chỗ hai lần thì count tụt từ 2 xuống 0,
+        // không còn bị sàn count > 0 che như khi khung chỉ có một phiếu
+        Appointment checkedIn = appointments.counterBook(staff, request(newPatient(), today, "15:00"));
+        jdbc.update("UPDATE appointments SET status = 'CHECKED_IN' WHERE id = ?", checkedIn.getId());
 
         for (int round = 0; round < 15; round++) {
             Appointment appt = appointments.counterBook(staff, request(patient, today, "15:00"));
-            assertThat(slotCount(today, "15:00")).isEqualTo(1);
-            List<Outcome> results = parallel(2, i -> i == 0
+            assertThat(slotCount(today, "15:00")).isEqualTo(2);
+            // Một huỷ tay và ba lần tự huỷ chồng nhau (như hai lượt job gối nhau): phiếu chỉ được nhả chỗ một lần
+            List<Outcome> results = parallel(4, i -> i == 0
                     ? run(() -> { appointments.counterCancel(staff, appt.getId(), "Đặt nhầm"); return null; })
                     : run(() -> appointments.autoCancelNoShows(evening)));
 
             assertThat(status(appt.getId())).as("vòng " + round).isEqualTo("CANCELLED");
-            assertThat(slotCount(today, "15:00")).as("vòng " + round).isEqualTo(0);
+            assertThat(slotCount(today, "15:00")).as("vòng " + round).isEqualTo(1);
+            assertThat(status(checkedIn.getId())).isEqualTo("CHECKED_IN");
             // Lỗi duy nhất chấp nhận được là phiếu đã bị bên kia huỷ trước
             for (Outcome r : results) assertThat(r.errorCode()).isIn((Object) null, "NOT_CANCELLABLE", "STALE");
         }
@@ -199,5 +205,24 @@ class BookingConcurrencyTest extends IntegrationTest {
         // Phiếu thắng đã nhả khung cũ, phiếu thua vẫn giữ khung cũ
         assertThat(slotCount(date, "08:00") + slotCount(date, "09:00")).isEqualTo(1);
         assertThat(countAppointments("status = 'BOOKED' AND slot_date = '" + date + "'")).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("[java] hai luồng cùng đổi giờ một phiếu: một thắng, một lỗi nghiệp vụ, chỗ đếm đúng")
+    void haiLuongCungDoiGioMotPhieu() throws Exception {
+        LocalDate date = LocalDate.parse(futureDate(2));
+        LocalDate newDate = LocalDate.parse(futureDate(3));
+        Appointment old = appointments.counterBook(staff, request(newPatient(), date, "08:00"));
+
+        List<Outcome> results = parallel(2, i -> run(() -> appointments.reschedule(staff, old.getId(), newDate, i == 0 ? "13:00" : "14:00")));
+
+        assertThat(results.stream().filter(Outcome::ok).count()).isEqualTo(1);
+        assertThat(results.stream().filter(r -> !r.ok()).map(Outcome::errorCode).toList())
+                .allMatch(c -> c.equals("NOT_RESCHEDULABLE") || c.equals("STALE"));
+        assertThat(status(old.getId())).isEqualTo("CANCELLED");
+        assertThat(slotCount(date, "08:00")).isEqualTo(0);
+        assertThat(slotCount(newDate, "13:00") + slotCount(newDate, "14:00")).isEqualTo(1);
+        assertThat(countAppointments("status = 'BOOKED'")).isEqualTo(1);
+        assertThat(countAppointments("rescheduled_from_id = " + old.getId())).isEqualTo(1);
     }
 }

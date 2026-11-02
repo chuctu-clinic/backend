@@ -58,7 +58,7 @@ class UserAppointmentsTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 8")
+    @Disabled("Task 9")
     @DisplayName("đánh dấu phiếu đã có kết quả khám")
     void danhDauPhieuCoKetQua() {
         // Node: tiếp tân check-in (Task 8) rồi lưu bệnh án (Task 9). Bản [java] bên dưới chèn bệnh án thẳng vào database.

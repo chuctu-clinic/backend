@@ -21,6 +21,7 @@ import java.util.function.Supplier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import vn.chuctu.clinic.account.User;
@@ -75,6 +76,8 @@ public class AppointmentService {
         this.counters = counters;
         this.jdbc = jdbc;
         this.tx = new TransactionTemplate(transactionManager);
+        // Luôn mở giao dịch mới: nếu một ngày nào đó có nơi gọi đang trong giao dịch, vòng thử lại vẫn làm lại được từ đầu
+        this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.clock = clock;
     }
 
