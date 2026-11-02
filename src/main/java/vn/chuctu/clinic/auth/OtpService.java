@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
@@ -16,6 +17,7 @@ import tools.jackson.databind.json.JsonMapper;
 import vn.chuctu.clinic.common.AppProperties;
 import vn.chuctu.clinic.common.Errors;
 import vn.chuctu.clinic.common.Hmac;
+import vn.chuctu.clinic.common.Phones;
 import vn.chuctu.clinic.common.Rules;
 
 /**
@@ -36,14 +38,16 @@ public class OtpService {
     private final VerificationCodeRepository codes;
     private final SmsGateway sms;
     private final EmailGateway emailGateway;
+    private final FirebaseVerifier firebase;
     private final AppProperties config;
     private final Clock clock;
     private final JsonMapper mapper;
 
-    public OtpService(VerificationCodeRepository codes, SmsGateway sms, EmailGateway emailGateway, AppProperties config, Clock clock, JsonMapper mapper) {
+    public OtpService(VerificationCodeRepository codes, SmsGateway sms, EmailGateway emailGateway, FirebaseVerifier firebase, AppProperties config, Clock clock, JsonMapper mapper) {
         this.codes = codes;
         this.sms = sms;
         this.emailGateway = emailGateway;
+        this.firebase = firebase;
         this.config = config;
         this.clock = clock;
         this.mapper = mapper;
@@ -160,9 +164,36 @@ public class OtpService {
         return verify(phone, purpose, proof.code());
     }
 
-    /** Kiểm ID token Firebase: làm ở Task 5 (cần FirebaseVerifier thật). */
+    /**
+     * Firebase: kiểm ID token trình duyệt nhận được sau khi nhập đúng mã. Token phải đúng số điện thoại, vừa mới xác
+     * thực, và có lần xin mã tương ứng còn hạn, chưa dùng (mỗi lần xin mã chỉ dùng được một lần).
+     */
     private VerificationCode verifyFirebase(String phone, String purpose, String idToken) {
-        throw new UnsupportedOperationException("Xác nhận bằng Firebase thuộc Task 5");
+        if (idToken == null || idToken.isEmpty()) {
+            throw Errors.badRequest("Cô chú vui lòng nhập mã xác nhận.",
+                    Map.of("fields", Map.of("code", "Cô chú vui lòng nhập mã xác nhận.")), "CODE_REQUIRED");
+        }
+        FirebaseVerifier.FirebaseInfo info;
+        try {
+            info = firebase.verify(idToken);
+        } catch (RuntimeException e) {
+            // Token sai, hết hạn, hay không lấy được khoá công khai: người dùng đều chỉ cần xin mã lại
+            throw Errors.badRequest("Phòng khám chưa xác nhận được mã. Cô chú bấm \"Gửi lại mã\" rồi thử lại.", null, "TOKEN_INVALID");
+        }
+        if (info.phone() == null || info.phone().isEmpty() || !phone.equals(Phones.normalize(info.phone()))) {
+            throw Errors.badRequest("Mã xác nhận không thuộc số điện thoại này.", null, "PHONE_MISMATCH");
+        }
+        Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
+        if (info.authTime() == null
+                || Duration.between(info.authTime(), now).toMillis() > (Rules.OTP_TTL_MINUTES + 1) * 60_000L) {
+            throw Errors.badRequest(CODE_EXPIRED, null, "CODE_EXPIRED");
+        }
+        VerificationCode doc = codes
+                .findFirstByPhoneAndPurposeAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDescIdDesc(phone, purpose, now)
+                .orElseThrow(() -> Errors.badRequest(CODE_EXPIRED, null, "CODE_EXPIRED"));
+        if (codes.markUsed(doc.getId(), now) == 0) throw Errors.badRequest(CODE_EXPIRED, null, "CODE_EXPIRED");
+        doc.setUsedAt(now);
+        return doc;
     }
 
     private static String randomCode() {

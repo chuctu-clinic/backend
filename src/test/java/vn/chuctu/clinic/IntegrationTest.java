@@ -23,7 +23,7 @@ import vn.chuctu.clinic.TestClocks.MutableClock;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ContextConfiguration(initializers = TestDatabase.class)
-@Import({TestClocks.class, FakeMail.Config.class})
+@Import({TestClocks.class, FakeMail.Config.class, FakeFirebase.Config.class})
 public abstract class IntegrationTest {
 
     @LocalServerPort protected int port;
@@ -33,6 +33,8 @@ public abstract class IntegrationTest {
     @Autowired protected SessionService sessions;
     /** Thư đã "gửi" trong test; bộ gửi SMTP thật không bao giờ chạy. */
     @Autowired protected FakeMail mail;
+    /** Bộ kiểm token Firebase giả; bộ thật (gọi mạng) không bao giờ chạy trong test. */
+    @Autowired protected FakeFirebase firebase;
     /** Đồng hồ cho mọi chỗ dùng bean java.time.Clock. */
     @Autowired protected MutableClock clock;
     /** Đồng hồ của bốn quy tắc theo giờ (tương đương clock.now của Node); mặc định 10:00 hôm nay theo giờ Việt Nam. */
@@ -67,6 +69,7 @@ public abstract class IntegrationTest {
         clock.reset();
         businessClock.reset();
         mail.reset();
+        firebase.reset();
     }
 
     private void wipeAllTables() {

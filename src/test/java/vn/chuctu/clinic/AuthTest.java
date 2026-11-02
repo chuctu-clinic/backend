@@ -640,16 +640,16 @@ class AuthTest extends IntegrationTest {
     void firebaseChiGhiNhanLanXinMa() {
         var firebaseConfig = new AppProperties(new MockEnvironment().withProperty("SMS_PROVIDER", "firebase"));
         var gateway = new SmsGateway(firebaseConfig);
-        var firebaseOtp = new OtpService(codes, gateway, new EmailGateway(firebaseConfig, mail), firebaseConfig, clock, mapper);
+        var firebaseOtp = new OtpService(codes, gateway, new EmailGateway(firebaseConfig, mail), firebase, firebaseConfig, clock, mapper);
 
         Map<String, Object> out = firebaseOtp.issue("0911000018", "NEW_DEVICE", null, null);
         assertThat(out).containsEntry("provider", "firebase").containsEntry("sent", true).doesNotContainKey("devCode");
         assertThat(out.keySet()).containsExactly("sent", "provider", "expiresInSeconds", "resendAfterSeconds");
         assertThat(codes.findAll().get(0).getCodeHash()).isEqualTo("firebase");
 
-        // Với Firebase, bằng chứng là ID token chứ không phải mã 6 số: chưa kiểm được cho tới Task 5
+        // Với Firebase, bằng chứng là ID token chứ không phải mã 6 số
         assertThatThrownBy(() -> firebaseOtp.verifyProof("0911000018", "NEW_DEVICE", new Proof("123456", null)))
-                .isInstanceOf(UnsupportedOperationException.class);
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.code()).isEqualTo("CODE_REQUIRED"));
     }
 
     @Test

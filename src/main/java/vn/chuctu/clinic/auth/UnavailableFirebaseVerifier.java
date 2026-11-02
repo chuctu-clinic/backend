@@ -1,13 +1,16 @@
 package vn.chuctu.clinic.auth;
 
-import org.springframework.stereotype.Component;
+/** Dùng khi chưa kiểm được token Firebase (SMS_PROVIDER không phải firebase, hoặc thiếu FIREBASE_PROJECT_ID): luôn từ chối. */
+final class UnavailableFirebaseVerifier implements FirebaseVerifier {
 
-/** Bản tạm cho tới Task 5 (NimbusFirebaseVerifier): chưa kiểm được token nên luôn từ chối. */
-@Component
-class UnavailableFirebaseVerifier implements FirebaseVerifier {
+    private final String reason;
+
+    UnavailableFirebaseVerifier(String reason) {
+        this.reason = reason;
+    }
 
     @Override
     public FirebaseInfo verify(String idToken) {
-        throw new IllegalStateException("Chưa có bộ kiểm token Firebase (Task 5)");
+        throw new IllegalStateException(reason);
     }
 }
