@@ -137,6 +137,7 @@ class NimbusFirebaseVerifierTest {
     void sai_aud_bi_tu_choi() throws Exception {
         assertRejected(verifier(false), signed(b -> b.audience("du-an-khac")));
         assertRejected(verifier(false), signed(b -> b.audience((String) null)));
+        assertRejected(verifier(false), signed(b -> b.audience(java.util.List.of(PROJECT, "du-an-khac"))));
     }
 
     @Test
@@ -150,16 +151,34 @@ class NimbusFirebaseVerifierTest {
     @Test
     @DisplayName("[java] iat ở tương lai hoặc thiếu bị từ chối")
     void iat_tuong_lai_bi_tu_choi() throws Exception {
-        assertRejected(verifier(false), signed(b -> b.issueTime(Date.from(NOW.plusSeconds(60)))));
+        assertRejected(verifier(false), signed(b -> b.issueTime(Date.from(NOW.plusSeconds(61)))));
         assertRejected(verifier(false), signed(b -> b.issueTime(null)));
     }
 
     @Test
     @DisplayName("[java] auth_time ở tương lai, thiếu hoặc không phải số bị từ chối")
     void auth_time_tuong_lai_bi_tu_choi() throws Exception {
-        assertRejected(verifier(false), signed(b -> b.claim("auth_time", NOW.plusSeconds(60).getEpochSecond())));
+        assertRejected(verifier(false), signed(b -> b.claim("auth_time", NOW.plusSeconds(61).getEpochSecond())));
         assertRejected(verifier(false), signed(b -> b.claim("auth_time", null)));
         assertRejected(verifier(false), signed(b -> b.claim("auth_time", "khong-phai-so")));
+    }
+
+    @Test
+    @DisplayName("[java] iat và auth_time lệch 60 giây ở tương lai vẫn được nhận, exp thì không có dung sai")
+    void do_lech_dong_ho_60_giay() throws Exception {
+        FirebaseInfo info = verifier(false).verify(signed(b -> b
+                .issueTime(Date.from(NOW.plusSeconds(60)))
+                .claim("auth_time", NOW.plusSeconds(60).getEpochSecond())));
+        assertThat(info.authTime()).isEqualTo(NOW.plusSeconds(60));
+        assertRejected(verifier(false), signed(b -> b.expirationTime(Date.from(NOW.minusSeconds(1)))));
+    }
+
+    @Test
+    @DisplayName("[java] token không có kid bị từ chối")
+    void khong_co_kid_bi_tu_choi() throws Exception {
+        var jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.RS256).type(JOSEObjectType.JWT).build(), validClaims().build());
+        jwt.sign(new RSASSASigner(signingKey));
+        assertRejected(verifier(false), jwt.serialize());
     }
 
     @Test

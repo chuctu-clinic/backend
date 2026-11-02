@@ -19,8 +19,10 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.text.ParseException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
+import java.util.List;
 import vn.chuctu.clinic.common.AppProperties;
 
 /**
@@ -28,8 +30,8 @@ import vn.chuctu.clinic.common.AppProperties;
  *
  * <ul>
  *   <li>Chữ ký RS256 theo khoá công khai của Google, chọn theo {@code kid}. Thuật toán khác RS256 bị từ chối.
- *   <li>{@code iss} = https://securetoken.google.com/projectId, {@code aud} chứa projectId, {@code exp} chưa qua,
- *       {@code iat} và {@code auth_time} không ở tương lai, {@code sub} khác rỗng. Thời gian lấy từ {@link Clock}.
+ *   <li>{@code iss} = https://securetoken.google.com/projectId, {@code aud} đúng bằng projectId, {@code exp} chưa qua,
+ *       {@code iat} và {@code auth_time} không quá 60 giây ở tương lai, {@code sub} khác rỗng. Thời gian lấy từ {@link Clock}.
  *   <li>Token không ký (alg=none) chỉ được nhận khi {@code allowEmulator}: tức là có FIREBASE_AUTH_EMULATOR_HOST và
  *       không phải production. Các kiểm tra claim vẫn áp dụng.
  * </ul>
@@ -41,6 +43,8 @@ public final class NimbusFirebaseVerifier implements FirebaseVerifier {
 
     static final String GOOGLE_JWK_URL =
             "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
+    /** Cho phép iat và auth_time lệch tới đây ở tương lai, để đồng hồ máy chủ chạy chậm không làm hỏng đăng nhập. exp luôn chặt. */
+    static final Duration FUTURE_SKEW = Duration.ofSeconds(60);
     private static final String ISSUER_PREFIX = "https://securetoken.google.com/";
 
     private final String projectId;
@@ -105,17 +109,17 @@ public final class NimbusFirebaseVerifier implements FirebaseVerifier {
     private Instant check(JWTClaimsSet claims) throws ParseException {
         Instant now = clock.instant();
         if (!(ISSUER_PREFIX + projectId).equals(claims.getIssuer())) throw new IllegalArgumentException("Sai iss");
-        if (!claims.getAudience().contains(projectId)) throw new IllegalArgumentException("Sai aud");
+        if (!List.of(projectId).equals(claims.getAudience())) throw new IllegalArgumentException("Sai aud");
         String sub = claims.getSubject();
         if (sub == null || sub.isEmpty()) throw new IllegalArgumentException("Thiếu sub");
         Date exp = claims.getExpirationTime();
         if (exp == null || !now.isBefore(exp.toInstant())) throw new IllegalArgumentException("Token đã hết hạn");
         Date iat = claims.getIssueTime();
-        if (iat == null || iat.toInstant().isAfter(now)) throw new IllegalArgumentException("iat không hợp lệ");
+        if (iat == null || iat.toInstant().isAfter(now.plus(FUTURE_SKEW))) throw new IllegalArgumentException("iat không hợp lệ");
         Object authTimeClaim = claims.getClaim("auth_time");
         if (!(authTimeClaim instanceof Number seconds)) throw new IllegalArgumentException("auth_time không hợp lệ");
         Instant authTime = Instant.ofEpochSecond(seconds.longValue());
-        if (authTime.isAfter(now)) throw new IllegalArgumentException("auth_time ở tương lai");
+        if (authTime.isAfter(now.plus(FUTURE_SKEW))) throw new IllegalArgumentException("auth_time ở tương lai");
         return authTime;
     }
 }

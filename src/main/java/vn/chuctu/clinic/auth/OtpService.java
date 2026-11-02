@@ -10,6 +10,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
@@ -31,6 +33,7 @@ public class OtpService {
     /** Bằng chứng giữ số điện thoại: mã 6 số (server tự gửi) hoặc ID token Firebase. */
     public record Proof(String code, String idToken) {}
 
+    private static final Logger log = LoggerFactory.getLogger(OtpService.class);
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final TypeReference<Map<String, Object>> MAP = new TypeReference<>() {};
     private static final String CODE_EXPIRED = "Mã xác nhận đã hết hạn. Cô chú bấm \"Gửi lại mã\" để nhận mã mới.";
@@ -177,7 +180,8 @@ public class OtpService {
         try {
             info = firebase.verify(idToken);
         } catch (RuntimeException e) {
-            // Token sai, hết hạn, hay không lấy được khoá công khai: người dùng đều chỉ cần xin mã lại
+            // Token sai, hết hạn, hay không lấy được khoá công khai: người dùng đều chỉ cần xin mã lại. Chỉ ghi lý do, không ghi token.
+            log.warn("Không xác nhận được ID token Firebase: {}", e.getMessage());
             throw Errors.badRequest("Phòng khám chưa xác nhận được mã. Cô chú bấm \"Gửi lại mã\" rồi thử lại.", null, "TOKEN_INVALID");
         }
         if (info.phone() == null || info.phone().isEmpty() || !phone.equals(Phones.normalize(info.phone()))) {
