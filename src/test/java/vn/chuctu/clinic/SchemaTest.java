@@ -25,7 +25,7 @@ class SchemaTest extends IntegrationTest {
     @BeforeEach
     void fixtures() {
         staffId = insert("INSERT INTO users (phone, full_name, role, created_at, updated_at) "
-                + "VALUES ('0900000001', 'Tiếp tân', 'RECEPTIONIST', UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))");
+                + "VALUES ('0900000501', 'Tiếp tân', 'RECEPTIONIST', UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))");
         patientId = insert("INSERT INTO patients (patient_code, full_name, created_at, updated_at) "
                 + "VALUES ('BN0001', 'Nguyễn Văn A', UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))");
         ticketSeq = 0;

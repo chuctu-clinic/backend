@@ -23,7 +23,6 @@ class SessionTest extends IntegrationTest {
 
     private static final String HS256 = "{\"alg\":\"HS256\",\"typ\":\"JWT\"}";
 
-    @Autowired AppProperties config;
     @Autowired JsonMapper mapper;
 
     private static String b64(byte[] bytes) {
@@ -63,8 +62,8 @@ class SessionTest extends IntegrationTest {
     void jwtSubKhongPhaiSoBiXoaCookie() throws Exception {
         createUser("USER");
         String token = jwt(config.jwtSecret, HS256, payload("507f1f77bcf86cd799439011", inOneHour()));
-        var res = client().cookie("ct_session", token).get("/api/auth/_probe").expectStatus(200);
-        assertThat(res.json().get("id").isNull()).isTrue();
+        var res = client().cookie("ct_session", token).get("/api/auth/me").expectStatus(200);
+        assertThat(res.json().get("user").isNull()).isTrue();
         assertSessionCookieCleared(res);
         client().cookie("ct_session", token).get("/api/me/_probe").expectStatus(401);
     }
@@ -113,7 +112,7 @@ class SessionTest extends IntegrationTest {
         assertThat(res.json().get("error").get("message").stringValue())
                 .isEqualTo("Tài khoản trên trình duyệt này vừa thay đổi ở một thẻ khác. Trang sẽ tải lại theo tài khoản hiện tại.");
         // /api/auth/* vẫn qua để tab tự cập nhật lại
-        browser.get("/api/auth/_probe").expectStatus(200);
+        browser.get("/api/auth/me").expectStatus(200);
         // Đúng tài khoản thì qua; chưa đăng nhập mà tab nhớ một tài khoản cũng bị từ chối
         loginAs(user).header("x-session-user", String.valueOf(user.getId())).get("/api/me/_probe").expectStatus(200);
         client().header("x-session-user", "5").get("/api/me/_probe").expectStatus(409);

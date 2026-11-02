@@ -9,6 +9,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -69,6 +72,25 @@ public class User {
     @LastModifiedDate
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    /** Thông tin trả về cho giao diện (toPublic của bản Node): ngày sinh dạng nửa đêm UTC, không có mật khẩu. */
+    public Map<String, Object> toPublic() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("id", String.valueOf(id));
+        out.put("phone", phone);
+        out.put("email", email);
+        out.put("fullName", fullName);
+        out.put("dob", dob == null ? null : dob.atStartOfDay(ZoneOffset.UTC).toInstant());
+        out.put("gender", gender);
+        out.put("address", address);
+        out.put("role", role);
+        out.put("isActive", active);
+        out.put("mustChangePassword", mustChangePassword);
+        out.put("lastLoginAt", lastLoginAt);
+        out.put("createdAt", createdAt);
+        out.put("infoUpdatedAt", infoUpdatedAt != null ? infoUpdatedAt : createdAt);
+        return out;
+    }
 
     public boolean isStaff() {
         return Constants.STAFF_ROLES.contains(role);

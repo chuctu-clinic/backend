@@ -10,7 +10,7 @@ class ContractTest extends IntegrationTest {
     @Test
     @DisplayName("[java] body sai kiểu trả VALIDATION")
     void bodySaiKieuTraValidation() {
-        var res = client().post("/api/auth/_probe/login", "{\"phone\":123}").expectStatus(400);
+        var res = client().post("/api/auth/login", "{\"phone\":123}").expectStatus(400);
         assertThat(res.json().get("error").get("code").stringValue()).isEqualTo("VALIDATION");
         assertThat(res.json().get("error").get("message").stringValue())
                 .isEqualTo("Thông tin chưa hợp lệ, cô chú kiểm tra lại các ô được đánh dấu.");
@@ -20,7 +20,7 @@ class ContractTest extends IntegrationTest {
     @Test
     @DisplayName("[java] body là mảng trả VALIDATION")
     void bodyLaMangTraValidation() {
-        var res = client().post("/api/auth/_probe/login", "[]").expectStatus(400);
+        var res = client().post("/api/auth/login", "[]").expectStatus(400);
         assertThat(res.json().get("error").get("code").stringValue()).isEqualTo("VALIDATION");
         assertThat(res.json().get("error").get("fields").get("_").stringValue()).isEqualTo("Expected object, received array");
     }
@@ -28,7 +28,7 @@ class ContractTest extends IntegrationTest {
     @Test
     @DisplayName("[java] không gửi body vẫn báo các ô bắt buộc")
     void khongCoBody() {
-        var res = client().send("POST", "/api/auth/_probe/login", null).expectStatus(400);
+        var res = client().send("POST", "/api/auth/login", null).expectStatus(400);
         assertThat(res.json().get("error").get("code").stringValue()).isEqualTo("VALIDATION");
         assertThat(res.json().get("error").get("fields").get("phone").stringValue()).isEqualTo("Cô chú vui lòng nhập số điện thoại.");
     }
@@ -55,12 +55,12 @@ class ContractTest extends IntegrationTest {
     void jsonQua1MbTraLoi() {
         // Bản Node (body-parser trả 413, errorHandler đổi thành 500): chạy thử cho đúng response này
         String big = "{\"phone\":\"" + "x".repeat(1100 * 1024) + "\"}";
-        var res = client().post("/api/auth/_probe/login", big);
+        var res = client().post("/api/auth/login", big);
         assertThat(res.status()).isEqualTo(500);
         assertThat(res.text()).isEqualTo("{\"error\":{\"code\":\"SERVER_ERROR\",\"message\":\"Hệ thống đang bận, cô chú vui lòng thử lại sau.\"}}");
         // Dưới giới hạn thì đi tiếp bình thường
         String ok = "{\"phone\":\"" + "x".repeat(1000 * 1024) + "\"}";
-        assertThat(client().post("/api/auth/_probe/login", ok).status()).isEqualTo(400);
+        assertThat(client().post("/api/auth/login", ok).status()).isEqualTo(400);
     }
 
     private static void assertPhoneRequired(TestClient.Result res) {
@@ -72,25 +72,26 @@ class ContractTest extends IntegrationTest {
     @Test
     @DisplayName("[java] body text/plain bị bỏ qua, endpoint thấy {}")
     void bodyTextPlain() {
-        assertPhoneRequired(client().send("POST", "/api/auth/_probe/login", "{\"phone\":\"0912345678\"}", "text/plain"));
+        assertPhoneRequired(client().send("POST", "/api/auth/login", "{\"phone\":\"0912345678\"}", "text/plain"));
     }
 
     @Test
     @DisplayName("[java] body form bị bỏ qua, endpoint thấy {}")
     void bodyForm() {
-        assertPhoneRequired(client().send("POST", "/api/auth/_probe/login", "phone=0912345678", "application/x-www-form-urlencoded"));
+        assertPhoneRequired(client().send("POST", "/api/auth/login", "phone=0912345678", "application/x-www-form-urlencoded"));
     }
 
     @Test
     @DisplayName("[java] không có Content-Type thì body bị bỏ qua")
     void khongCoContentType() {
-        assertPhoneRequired(client().send("POST", "/api/auth/_probe/login", "{\"phone\":\"0912345678\"}", null));
+        assertPhoneRequired(client().send("POST", "/api/auth/login", "{\"phone\":\"0912345678\"}", null));
     }
 
     @Test
     @DisplayName("[java] application/json có charset vẫn được đọc")
     void jsonCoCharset() {
-        client().send("POST", "/api/auth/_probe/login", "{\"phone\":\"0912345678\"}", "application/json; charset=utf-8")
+        String phone = createUser("USER").getPhone();
+        client().send("POST", "/api/auth/login", "{\"phone\":\"" + phone + "\"}", "application/json; charset=utf-8")
                 .expectStatus(200);
     }
 
@@ -98,29 +99,29 @@ class ContractTest extends IntegrationTest {
     @DisplayName("[java] application/x+json quá 1 MB không phải JSON nên bị bỏ qua, không lọt giới hạn")
     void xPlusJsonQuaLon() {
         String big = "{\"phone\":\"" + "x".repeat(1100 * 1024) + "\"}";
-        assertPhoneRequired(client().send("POST", "/api/auth/_probe/login", big, "application/x+json"));
+        assertPhoneRequired(client().send("POST", "/api/auth/login", big, "application/x+json"));
     }
 
     @Test
     @DisplayName("[java] Accept: text/plain không gây lỗi")
     void acceptTextPlain() {
-        var ok = client().header("Accept", "text/plain").get("/api/auth/_probe").expectStatus(200);
+        var ok = client().header("Accept", "text/plain").get("/api/auth/me").expectStatus(200);
         assertThat(ok.headers().firstValue("content-type").orElse("")).startsWith("application/json");
         client().header("Accept", "text/plain").get("/api/khong-co").expectStatus(404);
-        client().header("Accept", "image/png").send("POST", "/api/auth/_probe/login", "{}").expectStatus(400);
+        client().header("Accept", "image/png").send("POST", "/api/auth/login", "{}").expectStatus(400);
     }
 
     @Test
     @DisplayName("[java] JSON gốc là chuỗi trả BAD_JSON như express.json strict")
     void jsonGocLaChuoi() {
-        var res = client().post("/api/auth/_probe/login", "\"abc\"").expectStatus(400);
+        var res = client().post("/api/auth/login", "\"abc\"").expectStatus(400);
         assertThat(res.json().get("error").get("code").stringValue()).isEqualTo("BAD_JSON");
     }
 
     @Test
     @DisplayName("[java] header bảo mật tương đương helmet và CORS theo CLIENT_ORIGIN")
     void headerBaoMatVaCors() {
-        var res = client().header("Origin", "http://localhost:5173").get("/api/auth/_probe").expectStatus(200);
+        var res = client().header("Origin", "http://localhost:5173").get("/api/auth/me").expectStatus(200);
         var h = res.headers();
         assertThat(h.firstValue("x-content-type-options")).contains("nosniff");
         assertThat(h.firstValue("x-frame-options")).contains("SAMEORIGIN");
@@ -130,7 +131,7 @@ class ContractTest extends IntegrationTest {
         assertThat(h.firstValue("access-control-allow-origin")).contains("http://localhost:5173");
         assertThat(h.firstValue("access-control-allow-credentials")).contains("true");
 
-        var other = client().header("Origin", "http://evil.example").get("/api/auth/_probe").expectStatus(200);
+        var other = client().header("Origin", "http://evil.example").get("/api/auth/me").expectStatus(200);
         assertThat(other.headers().firstValue("access-control-allow-origin")).isEmpty();
     }
 }

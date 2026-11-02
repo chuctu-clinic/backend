@@ -133,4 +133,65 @@ class BodyTest {
         assertThat(Likes.contains("abc")).isEqualTo("%abc%");
         assertThat(Likes.contains("50%_a\\b")).isEqualTo("%50\\%\\_a\\\\b%");
     }
+
+    @Test
+    @DisplayName("[java] ngày bắt buộc: thiếu, null, sai kiểu, không có thật, đúng")
+    void requiredDate() {
+        for (String json : new String[] {"{}", "{\"dob\":null}", "{\"dob\":5}", "{\"dob\":\"2026-02-30\"}", "{\"dob\":\"1/2/1960\"}"}) {
+            Body b = body(json);
+            assertThat(b.requiredDate("dob")).isNull();
+            assertThat(fieldsOf(b)).containsKey("dob");
+        }
+        Body missing = body("{}");
+        missing.requiredDate("dob");
+        assertThat(fieldsOf(missing)).containsEntry("dob", "Required");
+        Body nul = body("{\"dob\":null}");
+        nul.requiredDate("dob");
+        assertThat(fieldsOf(nul)).containsEntry("dob", "Expected string, received null");
+        Body fake = body("{\"dob\":\"2026-02-30\"}");
+        fake.requiredDate("dob");
+        assertThat(fieldsOf(fake)).containsEntry("dob", "Ngày không hợp lệ.");
+        Body ok = body("{\"dob\":\"1960-01-01\"}");
+        assertThat(ok.requiredDate("dob")).isEqualTo(LocalDate.of(1960, 1, 1));
+        ok.check();
+    }
+
+    @Test
+    @DisplayName("[java] enum bắt buộc: thông báo riêng hoặc mặc định của zod")
+    void requiredEnum() {
+        var values = java.util.List.of("REGISTER", "NEW_DEVICE");
+        Body custom = body("{\"purpose\":\"X\"}");
+        assertThat(custom.requiredEnum("purpose", values, "Chọn đi")).isNull();
+        assertThat(fieldsOf(custom)).containsEntry("purpose", "Chọn đi");
+
+        Body missing = body("{}");
+        missing.requiredEnum("purpose", values, null);
+        assertThat(fieldsOf(missing)).containsEntry("purpose", "Required");
+        Body wrongType = body("{\"purpose\":7}");
+        wrongType.requiredEnum("purpose", values, null);
+        assertThat(fieldsOf(wrongType)).containsEntry("purpose", "Expected 'REGISTER' | 'NEW_DEVICE', received number");
+        Body unknown = body("{\"purpose\":\"X\"}");
+        unknown.requiredEnum("purpose", values, null);
+        assertThat(fieldsOf(unknown)).containsEntry("purpose", "Invalid enum value. Expected 'REGISTER' | 'NEW_DEVICE', received 'X'");
+
+        Body ok = body("{\"purpose\":\"NEW_DEVICE\"}");
+        assertThat(ok.requiredEnum("purpose", values, null)).isEqualTo("NEW_DEVICE");
+        ok.check();
+    }
+
+    @Test
+    @DisplayName("[java] chuỗi tuỳ chọn và boolean mặc định")
+    void optionalStringAndBoolean() {
+        Body b = body("{\"code\":\"12\",\"idToken\":null,\"remember\":\"yes\"}");
+        assertThat(b.optionalString("code", s -> s.length() == 6 ? null : "sai").get()).isEqualTo("12");
+        assertThat(b.optionalString("idToken", s -> null).isAbsent()).isTrue();
+        assertThat(b.optionalString("khac", s -> "sai").isAbsent()).isTrue();
+        assertThat(b.optionalBoolean("remember", true)).isTrue();
+        assertThat(fieldsOf(b)).containsEntry("code", "sai").containsEntry("idToken", "Expected string, received null")
+                .containsEntry("remember", "Expected boolean, received string");
+
+        Body ok = body("{\"remember\":false}");
+        assertThat(ok.optionalBoolean("remember", true)).isFalse();
+        assertThat(body("{}").optionalBoolean("remember", true)).isTrue();
+    }
 }

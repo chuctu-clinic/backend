@@ -5,12 +5,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
-import tools.jackson.databind.JsonNode;
 import vn.chuctu.clinic.account.User;
-import vn.chuctu.clinic.common.Body;
 import vn.chuctu.clinic.security.CurrentUser;
 
 /**
@@ -26,22 +22,9 @@ public class TestProbeController {
         this.currentUser = currentUser;
     }
 
-    @PostMapping("/api/auth/_probe/login")
-    Map<String, Object> login(@RequestBody(required = false) JsonNode json) {
-        Body body = Body.of(json);
-        String phone = body.requiredString("phone", Body.Rule.PHONE);
-        body.check();
-        return Map.of("phone", phone);
-    }
-
     @GetMapping("/api/me/_probe/appointments/{id}")
     Map<String, Object> appointment(@PathVariable long id) {
         return Map.of("id", String.valueOf(id));
-    }
-
-    @GetMapping("/api/auth/_probe")
-    Map<String, Object> auth() {
-        return who(currentUser.get());
     }
 
     @GetMapping("/api/auth/_probe/require")

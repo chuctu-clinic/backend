@@ -22,8 +22,8 @@ class SessionFailureTest extends IntegrationTest {
         var browser = loginAs(user);
         doThrow(new QueryTimeoutException("mất kết nối")).when(repository).findById(anyLong());
 
-        var anonymous = browser.get("/api/auth/_probe").expectStatus(200);
-        assertThat(anonymous.json().get("id").isNull()).isTrue();
+        var anonymous = browser.get("/api/auth/me").expectStatus(200);
+        assertThat(anonymous.json().get("user").isNull()).isTrue();
         assertThat(anonymous.headers().allValues("set-cookie"))
                 .anySatisfy(c -> assertThat(c).startsWith("ct_session=;").contains("Max-Age=0"));
         loginAs(user).get("/api/me/_probe").expectStatus(401);

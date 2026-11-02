@@ -3,10 +3,12 @@ package vn.chuctu.clinic.common;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -154,6 +156,75 @@ public final class Body {
         }
         fail(field, "Mã không hợp lệ.");
         return Opt.absent();
+    }
+
+    /**
+     * Ngày YYYY-MM-DD có thật, bắt buộc (z.string().refine(isDateStr)). Thiếu: "Required"; sai kiểu hoặc ngày không có thật:
+     * lỗi giống zod. Trả null nếu đã ghi lỗi.
+     */
+    public LocalDate requiredDate(String field) {
+        JsonNode node = field(field);
+        if (node == null) {
+            if (objectBody) fail(field, "Required");
+            return null;
+        }
+        if (node.isNull()) {
+            fail(field, "Expected string, received null");
+            return null;
+        }
+        Opt<LocalDate> date = date(field);
+        return date.isPresent() && date.get() != null ? date.get() : null;
+    }
+
+    /**
+     * z.enum([...]): bắt buộc, giá trị phải nằm trong danh sách. {@code customMessage} (errorMap của zod) thay cho mọi
+     * thông báo mặc định của zod; null thì dùng thông báo mặc định.
+     */
+    public String requiredEnum(String field, List<String> allowed, String customMessage) {
+        JsonNode node = field(field);
+        String expected = allowed.stream().map(v -> "'" + v + "'").collect(Collectors.joining(" | "));
+        if (node == null) {
+            if (objectBody) fail(field, customMessage != null ? customMessage : "Required");
+            return null;
+        }
+        if (!node.isString()) {
+            fail(field, customMessage != null ? customMessage : "Expected " + expected + ", received " + typeName(node));
+            return null;
+        }
+        String s = node.stringValue();
+        if (!allowed.contains(s)) {
+            fail(field, customMessage != null ? customMessage : "Invalid enum value. Expected " + expected + ", received '" + s + "'");
+            return null;
+        }
+        return s;
+    }
+
+    /**
+     * Chuỗi tuỳ chọn, giữ nguyên (không trim), kiểm tra riêng sau khi biết là chuỗi. Không gửi: absent. Gửi null hoặc sai
+     * kiểu: lỗi "Expected string" như z.string().optional().
+     */
+    public Opt<String> optionalString(String field, Function<String, String> problem) {
+        JsonNode node = field(field);
+        if (node == null) return Opt.absent();
+        if (!node.isString()) {
+            fail(field, "Expected string, received " + typeName(node));
+            return Opt.absent();
+        }
+        String s = node.stringValue();
+        String message = problem.apply(s);
+        if (message != null) fail(field, message);
+        return Opt.of(s);
+    }
+
+    /** z.boolean().optional().default(fallback). */
+    public boolean optionalBoolean(String field, boolean fallback) {
+        JsonNode node = field(field);
+        if (node == null) return fallback;
+        if (!node.isBoolean()) {
+            fail(field, "Expected boolean, received " + typeName(node));
+            return fallback;
+        }
+        return node.booleanValue();
     }
 
     private JsonNode field(String name) {

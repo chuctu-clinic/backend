@@ -23,7 +23,11 @@ public final class Errors {
     }
 
     public static ApiException unauthorized() {
-        return new ApiException(401, "UNAUTHORIZED", "Cô chú vui lòng đăng nhập để tiếp tục.", null);
+        return unauthorized("Cô chú vui lòng đăng nhập để tiếp tục.");
+    }
+
+    public static ApiException unauthorized(String message) {
+        return new ApiException(401, "UNAUTHORIZED", message, null);
     }
 
     public static ApiException forbidden() {
