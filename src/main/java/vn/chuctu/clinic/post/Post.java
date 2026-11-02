@@ -57,7 +57,7 @@ public class Post {
     @Column(name = "summary", nullable = false)
     private String summary = "";
 
-    @Column(name = "thumbnail_url")
+    @Column(name = "thumbnail_url", columnDefinition = "text")
     private String thumbnailUrl;
 
     @Column(name = "author_id", nullable = false)

@@ -570,4 +570,30 @@ class PostsTest extends IntegrationTest {
             pool.shutdownNow();
         }
     }
+
+    @Test
+    @DisplayName("[java] ảnh bìa là URL dài 2000 ký tự lưu và đọc lại đủ, không lỗi 500")
+    void anhBiaUrlDai() {
+        var admin = admin();
+        String url = "https://example.com/" + "a".repeat(2000 - "https://example.com/".length());
+        assertThat(url).hasSize(2000);
+        var post = create(admin, "title", "Ảnh bìa dài", "thumbnailUrl", url);
+        assertThat(post.get("thumbnailUrl").stringValue()).isEqualTo(url);
+        assertThat(admin.get("/api/admin/posts/" + id(post)).expectStatus(200).json().get("post").get("thumbnailUrl").stringValue()).isEqualTo(url);
+        var updated = admin.put("/api/admin/posts/" + id(post), body("thumbnailUrl", url + "?v=2")).expectStatus(200).json().get("post");
+        assertThat(updated.get("thumbnailUrl").stringValue()).isEqualTo(url + "?v=2");
+    }
+
+    @Test
+    @DisplayName("[java] cột email rộng 700 ký tự để nhận email dài hợp lệ")
+    void cotEmailRong() {
+        for (String table : List.of("users", "verification_codes")) {
+            assertThat(jdbc.queryForObject("SELECT character_maximum_length FROM information_schema.columns "
+                    + "WHERE table_schema = DATABASE() AND table_name = ? AND column_name = 'email'", Integer.class, table)).isEqualTo(700);
+        }
+        String email = "a".repeat(600) + "@example.com";
+        jdbc.update("INSERT INTO users (phone, email, full_name, role, created_at, updated_at) VALUES ('0900009999', ?, 'Dài', 'USER', "
+                + "UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))", email);
+        assertThat(jdbc.queryForObject("SELECT email FROM users WHERE phone = '0900009999'", String.class)).isEqualTo(email);
+    }
 }
