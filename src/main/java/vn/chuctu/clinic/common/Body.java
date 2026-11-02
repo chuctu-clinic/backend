@@ -30,6 +30,11 @@ public final class Body {
         /** z.string().trim().toLowerCase().min(1).email(): regex email của zod 3. */
         public static final Rule EMAIL = new Rule("Vui lòng nhập email.", true, v -> v.toLowerCase(java.util.Locale.ROOT), 1,
                 "Vui lòng nhập email.", Integer.MAX_VALUE, null,
+                s -> ZOD_EMAIL.matcher(s).matches() ? null : "Email chưa đúng, ví dụ ten@email.com.");
+
+        /** Như EMAIL, thêm giới hạn của cột email: dùng ở nơi ghi email vào database. */
+        public static final Rule EMAIL_STORED = new Rule("Vui lòng nhập email.", true, v -> v.toLowerCase(java.util.Locale.ROOT), 1,
+                "Vui lòng nhập email.", Integer.MAX_VALUE, null,
                 s -> !ZOD_EMAIL.matcher(s).matches() ? "Email chưa đúng, ví dụ ten@email.com." : tooLongEmail(s));
 
         public static Rule required(String requiredMessage) {

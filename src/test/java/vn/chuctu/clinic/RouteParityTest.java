@@ -112,9 +112,9 @@ class RouteParityTest extends IntegrationTest {
     private Set<String> javaRoutes() {
         Set<String> out = new TreeSet<>();
         mappings.getHandlerMethods().forEach((info, handler) -> {
-            // Chỉ tính controller của ứng dụng: bỏ /error của Spring Boot và mọi controller chỉ có trong src/test
+            // Chỉ tính controller của ứng dụng: bỏ /error của Spring Boot (src/test không còn controller nào)
             String type = handler.getBeanType().getName();
-            if (!type.startsWith("vn.chuctu.clinic.") || type.startsWith("vn.chuctu.clinic.Test")) return;
+            if (!type.startsWith("vn.chuctu.clinic.")) return;
             Set<RequestMethod> methods = info.getMethodsCondition().getMethods();
             assertThat(methods).as("mapping %s phải nêu phương thức", info).isNotEmpty();
             for (String pattern : info.getPathPatternsCondition().getPatternValues()) {

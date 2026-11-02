@@ -112,7 +112,7 @@ class SessionTest extends IntegrationTest {
         assertThat(res.json().get("error").get("message").stringValue())
                 .isEqualTo("Tài khoản trên trình duyệt này vừa thay đổi ở một thẻ khác. Trang sẽ tải lại theo tài khoản hiện tại.");
         // /api/auth/* vẫn qua để tab tự cập nhật lại
-        browser.get("/api/auth/me").expectStatus(200);
+        browser.post("/api/auth/change-password", java.util.Map.of("currentPassword", "sai", "newPassword", "MatKhauMoi456")).expectStatus(400);
         // Đúng tài khoản thì qua; chưa đăng nhập mà tab nhớ một tài khoản cũng bị từ chối
         loginAs(user).header("x-session-user", String.valueOf(user.getId())).get("/api/me").expectStatus(200);
         client().header("x-session-user", "5").get("/api/me").expectStatus(409);
@@ -175,7 +175,8 @@ class SessionTest extends IntegrationTest {
         var admin = loginAs(createUser("ADMIN"));
         admin.get("/api/staff/patients").expectStatus(200);
         admin.get("/api/admin/posts").expectStatus(200);
-        admin.get("/api/auth/me").expectStatus(200);
+        // Đường dẫn /auth không chặn theo vai trò: lỗi nghiệp vụ 400 (tài khoản không dùng mật khẩu), không phải 401/403
+        admin.post("/api/auth/change-password", java.util.Map.of("currentPassword", "sai", "newPassword", "MatKhauMoi456")).expectStatus(400);
     }
 
     @Test

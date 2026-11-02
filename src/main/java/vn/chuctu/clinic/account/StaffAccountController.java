@@ -46,7 +46,7 @@ public class StaffAccountController {
     @PostMapping("/email")
     Map<String, Object> startEmailChange(@RequestBody(required = false) JsonNode json) {
         Body body = Body.of(json);
-        String email = body.requiredString("email", Rule.EMAIL);
+        String email = body.requiredString("email", Rule.EMAIL_STORED);
         body.check();
         return auth.startEmailChange(currentUser.require(), email);
     }

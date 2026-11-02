@@ -170,6 +170,39 @@ class AdminAccountsTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("[java] ký tự % và _ trong từ khoá tìm đúng nghĩa đen")
+    void javaTimKiemKyTuDacBiet() {
+        var admin = admin();
+        var plain = admin.post("/api/admin/accounts", newAccount("fullName", "Nguyen Van Abc")).expectStatus(201).json().get("account");
+        var literal = admin.post("/api/admin/accounts", newAccount("phone", "0920000002", "fullName", "Giam 50%_off")).expectStatus(201)
+                .json().get("account");
+        assertThat(ids(list(admin, "q=50%25_off"))).containsExactly(literal.get("id").stringValue());
+        assertThat(ids(list(admin, "q=%25"))).containsExactly(literal.get("id").stringValue());
+        assertThat(ids(list(admin, "q=_"))).containsExactly(literal.get("id").stringValue());
+        assertThat(ids(list(admin, "q=Nguyen"))).containsExactly(plain.get("id").stringValue());
+    }
+
+    @Test
+    @DisplayName("[java] total và trang hai của danh sách tài khoản")
+    void javaPhanTrang() {
+        var admin = admin();
+        for (int i = 1; i <= 3; i++) {
+            admin.post("/api/admin/accounts", newAccount("phone", "092000010" + i, "fullName", "Khach " + i)).expectStatus(201);
+        }
+        // 2 tài khoản nội bộ mẫu + 3 người dùng
+        var first = list(admin, "limit=2");
+        assertThat(first.get("total").intValue()).isEqualTo(5);
+        assertThat(first.get("page").intValue()).isEqualTo(1);
+        assertThat(first.get("items").size()).isEqualTo(2);
+        var second = list(admin, "limit=2&page=2");
+        assertThat(second.get("page").intValue()).isEqualTo(2);
+        assertThat(second.get("total").intValue()).isEqualTo(5);
+        assertThat(second.get("items").size()).isEqualTo(2);
+        assertThat(ids(second)).doesNotContainAnyElementsOf(ids(first));
+        assertThat(list(admin, "limit=2&page=3").get("items").size()).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("không tìm thấy tài khoản thì báo 404")
     void khongTimThay() {
         admin().get("/api/admin/accounts/000000000000000000000000").expectStatus(404);
@@ -341,9 +374,8 @@ class AdminAccountsTest extends IntegrationTest {
                 body("role", "RECEPTIONIST", "tempPassword", TEMP, "email", tooLong)).expectStatus(400);
         assertThat(fields(role).has("email")).isTrue();
 
-        var forgot = client().post("/api/auth/staff/forgot-password", body("email", tooLong)).expectStatus(400);
-        assertThat(errorCode(forgot)).isEqualTo("VALIDATION");
-        assertThat(fields(forgot).has("email")).isTrue();
+        // Quên mật khẩu chỉ đọc email nên giữ cách của Node: trả lời như thường, không báo lỗi độ dài
+        client().post("/api/auth/staff/forgot-password", body("email", tooLong)).expectStatus(200);
         var change = client().staff().post("/api/staff/account/email", body("email", tooLong)).expectStatus(400);
         assertThat(fields(change).has("email")).isTrue();
 
