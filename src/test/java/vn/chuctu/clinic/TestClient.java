@@ -126,6 +126,53 @@ public final class TestClient {
         }
     }
 
+    /** Phản hồi nhị phân (ảnh). */
+    public record Binary(int status, byte[] body, HttpHeaders headers) {}
+
+    public Binary getBytes(String path) {
+        try {
+            HttpResponse<byte[]> response = http.send(buildGet(path), HttpResponse.BodyHandlers.ofByteArray());
+            return new Binary(response.statusCode(), response.body(), response.headers());
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private HttpRequest buildGet(String path) {
+        HttpRequest.Builder request = HttpRequest.newBuilder(base.resolve(path));
+        headers.forEach(request::header);
+        return request.GET().build();
+    }
+
+    /** Gửi byte thô có Content-Length (supertest .send(Buffer)). contentType null: không gửi header. */
+    public Result sendBytes(String method, String path, byte[] data, String contentType) {
+        return sendBody(method, path, HttpRequest.BodyPublishers.ofByteArray(data), contentType);
+    }
+
+    /** Gửi dòng byte không biết trước độ dài: HTTP/1.1 dùng Transfer-Encoding chunked, không có Content-Length. */
+    public Result sendChunked(String method, String path, java.io.InputStream data, String contentType) {
+        return sendBody(method, path, HttpRequest.BodyPublishers.fromPublisher(HttpRequest.BodyPublishers.ofInputStream(() -> data)), contentType);
+    }
+
+    private Result sendBody(String method, String path, HttpRequest.BodyPublisher publisher, String contentType) {
+        HttpRequest.Builder request = HttpRequest.newBuilder(base.resolve(path));
+        headers.forEach(request::header);
+        if (contentType != null) request.header("Content-Type", contentType);
+        request.method(method, publisher);
+        try {
+            HttpResponse<String> response = http.send(request.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            return new Result(response.statusCode(), response.body(), response.headers());
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
     // Ba hàm dưới đây theo test/helpers.js. Cần các API đăng ký (Task 3 trở đi) nên chưa chạy được ở Task 2.
 
     /** Đăng ký một người dùng mới và đăng nhập trên trình duyệt này. */

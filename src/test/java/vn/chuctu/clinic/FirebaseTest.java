@@ -5,14 +5,15 @@ import static org.mockito.Mockito.doReturn;
 
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import vn.chuctu.clinic.auth.SmsGateway;
 import vn.chuctu.clinic.security.SessionService;
 
 /** Chế độ Firebase (firebase.test.js): trình duyệt gửi và xác nhận mã, server kiểm ID token. Phần kiểm token do FakeFirebase thay. */
+@TestPropertySource(properties = "FIREBASE_PROJECT_ID=chuc-tu-test")
 class FirebaseTest extends IntegrationTest {
 
     @MockitoSpyBean SmsGateway sms;
@@ -35,9 +36,12 @@ class FirebaseTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 10")
     @DisplayName("giao diện biết phải gửi mã qua Firebase")
-    void giaoDienBietGuiMaQuaFirebase() {}
+    void giaoDienBietGuiMaQuaFirebase() {
+        var meta = client().get("/api/meta").expectStatus(200).json();
+        assertThat(meta.get("otp").get("provider").stringValue()).isEqualTo("firebase");
+        assertThat(meta.get("otp").get("firebase").get("projectId").stringValue()).isEqualTo("chuc-tu-test");
+    }
 
     @Test
     @DisplayName("đăng ký: server không sinh mã, nhận ID token đúng số thì tạo tài khoản; không dùng lại được")

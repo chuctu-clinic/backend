@@ -23,3 +23,7 @@ server:
   port: ${PORT:4000}
   # Tin một lớp proxy (X-Forwarded-*), tương đương app.set('trust proxy', 1)
   forward-headers-strategy: framework
+  tomcat:
+    # Khi trả lỗi mà chưa đọc hết body (ví dụ ảnh quá 3 MB hay body không phải ảnh gửi tới /api/admin/uploads), Tomcat đọc bỏ phần
+    # thừa tới giới hạn này rồi mới đóng kết nối; mặc định 2 MB thì máy khách gửi 3 đến 8 MB bị ngắt trước khi nhận được phản hồi lỗi.
+    max-swallow-size: 8MB

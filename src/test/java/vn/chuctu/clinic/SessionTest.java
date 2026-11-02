@@ -154,7 +154,7 @@ class SessionTest extends IntegrationTest {
     void phanQuyenTheoUrl() {
         client().get("/api/me").expectStatus(401);
         client().get("/api/staff/patients").expectStatus(401);
-        client().get("/api/admin/_probe").expectStatus(401);
+        client().get("/api/admin/posts").expectStatus(401);
         client().get("/api/auth/_probe/require").expectStatus(401);
         var unauthorized = client().get("/api/me").json().get("error");
         assertThat(unauthorized.get("code").stringValue()).isEqualTo("UNAUTHORIZED");
@@ -165,16 +165,16 @@ class SessionTest extends IntegrationTest {
         var forbidden = user.get("/api/staff/patients").expectStatus(403).json().get("error");
         assertThat(forbidden.get("code").stringValue()).isEqualTo("FORBIDDEN");
         assertThat(forbidden.get("message").stringValue()).isEqualTo("Tài khoản không có quyền thực hiện thao tác này.");
-        user.get("/api/admin/_probe").expectStatus(403);
+        user.get("/api/admin/posts").expectStatus(403);
 
         var receptionist = loginAs(createUser("RECEPTIONIST"));
         receptionist.get("/api/staff/patients").expectStatus(200);
-        receptionist.get("/api/admin/_probe").expectStatus(403);
+        receptionist.get("/api/admin/posts").expectStatus(403);
         receptionist.get("/api/me").expectStatus(403);
 
         var admin = loginAs(createUser("ADMIN"));
         admin.get("/api/staff/patients").expectStatus(200);
-        admin.get("/api/admin/_probe").expectStatus(200);
+        admin.get("/api/admin/posts").expectStatus(200);
         admin.get("/api/auth/_probe/require").expectStatus(200);
     }
 
@@ -188,7 +188,7 @@ class SessionTest extends IntegrationTest {
         var res = browser.get("/api/staff/patients").expectStatus(403);
         assertThat(res.json().get("error").get("message").stringValue()).isEqualTo("Cô chú cần đổi mật khẩu tạm trước khi tiếp tục.");
         // Vai trò sai vẫn báo thông thường; API /auth vẫn dùng được để đổi mật khẩu
-        assertThat(browser.get("/api/admin/_probe").expectStatus(403).json().get("error").get("message").stringValue())
+        assertThat(browser.get("/api/admin/posts").expectStatus(403).json().get("error").get("message").stringValue())
                 .isEqualTo("Tài khoản không có quyền thực hiện thao tác này.");
         browser.get("/api/auth/_probe/require").expectStatus(200);
     }

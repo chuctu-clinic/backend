@@ -282,6 +282,22 @@ public final class Body {
     }
 
     /**
+     * z.string()[.trim()].max(max, message).optional(): không gửi là absent, chuỗi rỗng vẫn là chuỗi (khác {@link #optionalText}).
+     * Gửi null hoặc sai kiểu: "Expected string, received ...".
+     */
+    public Opt<String> optionalString(String field, boolean trim, int max, String maxMessage) {
+        JsonNode node = field(field);
+        if (node == null) return Opt.absent();
+        if (!node.isString()) {
+            abort(field, "Expected string, received " + typeName(node));
+            return Opt.absent();
+        }
+        String s = trim ? trim(node.stringValue()) : node.stringValue();
+        if (s.length() > max) fail(field, maxMessage);
+        return Opt.of(s);
+    }
+
+    /**
      * z.union([chuỗi có kiểm tra, z.literal(""), z.null()]).optional().transform(v => v || null): không gửi là absent; null hoặc
      * chuỗi rỗng đúng nghĩa là present(null) (xoá); chuỗi khác đi qua {@code prepare} (trim, chuẩn hoá) rồi {@code problem}
      * (trả lý do lỗi đầu tiên, null nếu hợp lệ). Kiểu khác chuỗi: zod báo "Invalid input" vì không nhánh nào khớp.

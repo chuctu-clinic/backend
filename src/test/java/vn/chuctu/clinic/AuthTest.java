@@ -202,7 +202,7 @@ class AuthTest extends IntegrationTest {
         var agent = client().staff();
         // Node gọi /api/admin/dashboard (Task 11); dùng route thật cùng phân quyền
         agent.get("/api/staff/queue").expectStatus(200);
-        agent.get("/api/admin/_probe").expectStatus(403);
+        agent.get("/api/admin/posts").expectStatus(403);
     }
 
     @Test

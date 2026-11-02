@@ -26,11 +26,6 @@ public class TestProbeController {
         return who(currentUser.require());
     }
 
-    @GetMapping("/api/admin/_probe")
-    Map<String, Object> admin() {
-        return who(currentUser.require());
-    }
-
     @GetMapping("/api/auth/_probe/instants")
     Map<String, Object> instants() {
         Map<String, Object> out = new LinkedHashMap<>();

@@ -1,5 +1,7 @@
 package vn.chuctu.clinic.auth;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -28,6 +30,20 @@ public class SmsGateway {
     /** Mã do trình duyệt gửi (Firebase) hay do server sinh và gửi. */
     public boolean usesFirebase() {
         return config.smsProvider.equals("firebase");
+    }
+
+    /** Cấu hình Web app Firebase gửi cho giao diện (đều là giá trị công khai); null khi không dùng Firebase. */
+    public Map<String, Object> firebaseWebConfig() {
+        if (!usesFirebase()) return null;
+        AppProperties.Firebase firebase = config.firebase;
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("apiKey", firebase.apiKey());
+        out.put("authDomain", firebase.authDomain());
+        out.put("projectId", firebase.projectId());
+        out.put("appId", firebase.appId());
+        out.put("emulatorUrl", firebase.emulatorHost().isEmpty() ? null : "http://" + firebase.emulatorHost());
+        out.put("testNumbersOnly", firebase.testNumbersOnly());
+        return out;
     }
 
     public void sendVerificationCode(String phone, String code, String purpose) {
