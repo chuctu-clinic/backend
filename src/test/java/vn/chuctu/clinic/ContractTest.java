@@ -36,7 +36,7 @@ class ContractTest extends IntegrationTest {
     @Test
     @DisplayName("[java] id quá lớn trả 404 NOT_FOUND")
     void idQuaLonTra404() {
-        var res = loginAs(createUser("USER")).get("/api/me/_probe/appointments/99999999999999999999").expectStatus(404);
+        var res = loginAs(createUser("USER")).get("/api/me/appointments/99999999999999999999").expectStatus(404);
         assertThat(res.json().get("error").get("code").stringValue()).isEqualTo("NOT_FOUND");
     }
 

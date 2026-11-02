@@ -52,7 +52,7 @@ class ErrorHandlerTest extends IntegrationTest {
     @DisplayName("mã không đúng định dạng được coi là không tìm thấy")
     void maKhongDungDinhDang() {
         var browser = loginAs(createUser("USER"));
-        var res = browser.get("/api/me/_probe/appointments/khong-phai-id").expectStatus(404);
+        var res = browser.get("/api/me/appointments/khong-phai-id").expectStatus(404);
         assertThat(res.json().get("error").get("code").stringValue()).isEqualTo("NOT_FOUND");
         assertThat(res.json().get("error").get("message").stringValue()).isEqualTo("Không tìm thấy dữ liệu.");
     }

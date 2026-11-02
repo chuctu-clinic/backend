@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 import vn.chuctu.clinic.account.User;
 import vn.chuctu.clinic.security.CurrentUser;
@@ -20,11 +19,6 @@ public class TestProbeController {
 
     public TestProbeController(CurrentUser currentUser) {
         this.currentUser = currentUser;
-    }
-
-    @GetMapping("/api/me/_probe/appointments/{id}")
-    Map<String, Object> appointment(@PathVariable long id) {
-        return Map.of("id", String.valueOf(id));
     }
 
     @GetMapping("/api/auth/_probe/require")

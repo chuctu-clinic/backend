@@ -35,6 +35,7 @@ public final class TestDatabase implements ApplicationContextInitializer<Configu
     @Override
     public void initialize(ConfigurableApplicationContext context) {
         String url = testUrl(context.getEnvironment().getProperty("DB_URL"));
-        TestPropertyValues.of("spring.datasource.url=" + url).applyTo(context);
+        // NoShowJob không được chạy trong test: nó tự huỷ phiếu theo giờ thật giữa chừng các test
+        TestPropertyValues.of("spring.datasource.url=" + url, "clinic.no-show-job.enabled=false").applyTo(context);
     }
 }

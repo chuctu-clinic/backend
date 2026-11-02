@@ -354,7 +354,6 @@ class ProfilesTest extends IntegrationTest {
     // ---------- Ngày tháng và năm sinh ----------
 
     @Test
-    @Disabled("Task 7")
     @DisplayName("từ chối ngày không có thật, không tự đẩy sang tháng sau")
     void tuChoiNgayKhongCoThat() {
         var user = client().registerUser();
@@ -520,7 +519,6 @@ class ProfilesTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 7")
     @DisplayName("không xem, sửa, xoá hay đặt lịch được cho hồ sơ của tài khoản khác")
     void khongDungDuocHoSoTaiKhoanKhac() {
         var owner = client().registerUser("0918000011", "Chủ Hồ Sơ");
@@ -552,7 +550,6 @@ class ProfilesTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 7")
     @DisplayName("hồ sơ bị khoá thì không sửa được và không đặt lịch được")
     void hoSoBiKhoa() {
         var admin = client().staff("admin@chuctu.vn");
@@ -596,7 +593,6 @@ class ProfilesTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 7")
     @DisplayName("hồ sơ còn phiếu chưa hoàn thành thì chưa xoá được")
     void hoSoConPhieuChuaHoanThanh() {
         var user = client().registerUser();
@@ -625,7 +621,6 @@ class ProfilesTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 7")
     @DisplayName("hồ sơ đã có phiếu khám thì tách khỏi tài khoản, phòng khám vẫn giữ (BR.38)")
     void hoSoDaCoPhieuKham() {
         var user = client().registerUser();

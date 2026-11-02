@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.JsonNode;
+import vn.chuctu.clinic.appointment.AppointmentService;
 import vn.chuctu.clinic.common.Body;
 import vn.chuctu.clinic.common.Errors;
 import vn.chuctu.clinic.common.Paging;
@@ -33,11 +34,13 @@ public class StaffPatientController {
     private static final Pattern ID = Pattern.compile("^[1-9]\\d{0,18}$");
 
     private final PatientService patients;
+    private final AppointmentService appointments;
     private final CurrentUser currentUser;
     private final Clock clock;
 
-    public StaffPatientController(PatientService patients, CurrentUser currentUser, Clock clock) {
+    public StaffPatientController(PatientService patients, AppointmentService appointments, CurrentUser currentUser, Clock clock) {
         this.patients = patients;
+        this.appointments = appointments;
         this.currentUser = currentUser;
         this.clock = clock;
     }
@@ -97,8 +100,8 @@ public class StaffPatientController {
         Patient patient = patients.getPatient(id);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("patient", patients.toPublic(patient));
-        // Phiếu khám (Task 7, AppointmentService.listPatientAppointments) và bệnh án (Task 9, listPatientRecords) nối vào đây
-        out.put("appointments", List.of());
+        out.put("appointments", appointments.listPatientAppointments(patient.getId()));
+        // Bệnh án (Task 9, listPatientRecords) nối vào đây
         out.put("records", List.of());
         return out;
     }
