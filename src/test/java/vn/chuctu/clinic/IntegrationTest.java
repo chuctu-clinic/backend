@@ -7,19 +7,19 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.ContextConfiguration;
 import vn.chuctu.clinic.TestClocks.MutableBusinessClock;
 import vn.chuctu.clinic.account.User;
 import vn.chuctu.clinic.account.UserRepository;
 import vn.chuctu.clinic.common.AppProperties;
 import vn.chuctu.clinic.security.SessionService;
+import vn.chuctu.clinic.seed.Seeder;
 import vn.chuctu.clinic.TestClocks.MutableClock;
 
 /**
  * Lớp cha của mọi test chạm database. Chạy trên MySQL thật (database chuctu_test), cổng ngẫu nhiên.
  * Trước mỗi test: kiểm tra đang ở chuctu_test, xoá dữ liệu mọi bảng trừ flyway_schema_history, nạp dữ liệu nền
- * (hai tài khoản nội bộ mẫu, xem seedBaselineData) và đặt lại hai đồng hồ.
+ * (Seeder.run(false): hai tài khoản nội bộ mẫu và 4 trang thông tin, như seed() trong helpers.js của Node) và đặt lại hai đồng hồ.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ContextConfiguration(initializers = TestDatabase.class)
@@ -31,6 +31,7 @@ public abstract class IntegrationTest {
     @Autowired protected UserRepository users;
     @Autowired protected AppProperties config;
     @Autowired protected SessionService sessions;
+    @Autowired protected Seeder seeder;
     /** Thư đã "gửi" trong test; bộ gửi SMTP thật không bao giờ chạy. */
     @Autowired protected FakeMail mail;
     /** Bộ kiểm token Firebase giả; bộ thật (gọi mạng) không bao giờ chạy trong test. */
@@ -65,7 +66,7 @@ public abstract class IntegrationTest {
     @BeforeEach
     void resetDatabaseAndClocks() {
         wipeAllTables();
-        seedBaselineData();
+        seeder.run(false);
         clock.reset();
         businessClock.reset();
         mail.reset();
@@ -96,21 +97,5 @@ public abstract class IntegrationTest {
             }
             return null;
         });
-    }
-
-    /** bcrypt của mật khẩu mẫu, tính một lần cho cả lần chạy (mỗi lần băm mất vài chục mili giây). */
-    private static final String SAMPLE_PASSWORD_HASH = new BCryptPasswordEncoder(10).encode(AppProperties.SAMPLE_STAFF_PASSWORD);
-
-    /**
-     * Nạp dữ liệu nền trước mỗi test: hai tài khoản nội bộ mẫu (admin và tiếp tân, giá trị mặc định của config.js,
-     * mật khẩu ChucTu@2026). Chỉ để test dùng; Task 12 thay bằng Seeder thật.
-     */
-    protected void seedBaselineData() {
-        for (var account : List.of(config.seedAdmin, config.seedReceptionist)) {
-            String role = account == config.seedAdmin ? "ADMIN" : "RECEPTIONIST";
-            jdbc.update("INSERT INTO users (phone, email, full_name, role, password_hash, must_change_password, is_active, "
-                    + "created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, 1, UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))",
-                    account.phone(), account.email(), account.fullName(), role, SAMPLE_PASSWORD_HASH);
-        }
     }
 }

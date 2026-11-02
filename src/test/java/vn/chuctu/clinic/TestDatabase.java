@@ -35,7 +35,9 @@ public final class TestDatabase implements ApplicationContextInitializer<Configu
     @Override
     public void initialize(ConfigurableApplicationContext context) {
         String url = testUrl(context.getEnvironment().getProperty("DB_URL"));
-        // NoShowJob không được chạy trong test: nó tự huỷ phiếu theo giờ thật giữa chừng các test
-        TestPropertyValues.of("spring.datasource.url=" + url, "clinic.no-show-job.enabled=false").applyTo(context);
+        // Các việc chạy nền không được chạy trong test: NoShowJob tự huỷ phiếu theo giờ thật giữa chừng các test, seed khi khởi động
+        // và dọn mã theo lịch làm đổi dữ liệu ngoài tầm kiểm soát của test (test tự gọi Seeder và VerificationCleanupJob)
+        TestPropertyValues.of("spring.datasource.url=" + url, "clinic.no-show-job.enabled=false",
+                "clinic.seed-on-startup=false", "clinic.cleanup-job.enabled=false").applyTo(context);
     }
 }

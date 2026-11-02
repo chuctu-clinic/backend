@@ -99,6 +99,9 @@ class DashboardTest extends IntegrationTest {
         var admin = client().staff("admin@chuctu.vn");
         var staff = client().staff();
         for (int i = 0; i < 6; i++) staff.post("/api/staff/appointments/" + todayAppointment("BOOKED") + "/checkin", body()).expectStatus(200);
+        // Seed đã tạo 4 trang thông tin đã đăng, nên so với số trước khi thêm
+        int publishedBefore = admin.get("/api/admin/dashboard").expectStatus(200).json().get("posts").get("published").intValue();
+        assertThat(publishedBefore).isEqualTo(4);
         for (String status : List.of("PUBLISHED", "DRAFT", "HIDDEN")) {
             admin.post("/api/admin/posts", body("title", "Bài " + status, "summary", "Mô tả", "category", "TIN_TUC", "authorName", "BS",
                     "content", "<p>x</p>", "status", status)).expectStatus(201);
@@ -110,7 +113,7 @@ class DashboardTest extends IntegrationTest {
         assertThat(waiting.get(0).size()).isEqualTo(2);
         assertThat(waiting.get(0).get("ticketCode").stringValue()).startsWith("CT-PK-D-");
         assertThat(waiting.get(0).get("priorityGroup").isString()).isTrue();
-        assertThat(res.get("posts").get("published").intValue()).isEqualTo(1);
+        assertThat(res.get("posts").get("published").intValue()).isEqualTo(publishedBefore + 1);
         assertThat(res.get("posts").get("draft").intValue()).isEqualTo(1);
         assertThat(res.get("posts").get("hidden").intValue()).isEqualTo(1);
     }

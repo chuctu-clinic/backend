@@ -10,7 +10,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -24,17 +23,6 @@ class PostsTest extends IntegrationTest {
 
     private static final Map<String, Object> POST = body("summary", "Mô tả bài", "category", "TIN_TUC", "authorName", "BS",
             "content", "<p>Nội dung</p>", "status", "PUBLISHED");
-
-    /** Node seed bốn trang thông tin cố định; Seeder của Java ở Task 12, nên test tự thêm để kiểm tra việc loại chúng khỏi danh sách. */
-    @BeforeEach
-    void seedPages() {
-        for (String slug : List.of("gioi-thieu", "dich-vu", "huong-dan", "lien-he")) {
-            jdbc.update("INSERT INTO posts (title, slug, category, summary, author_id, author_name, content, status, published_at, "
-                    + "created_at, updated_at) VALUES (?, ?, 'TRANG', 'Mô tả trang', (SELECT id FROM users WHERE role = 'ADMIN'), "
-                    + "'Phòng khám Chúc Từ', '<p>Trang</p>', 'PUBLISHED', UTC_TIMESTAMP(3), UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))",
-                    "Trang " + slug, slug);
-        }
-    }
 
     private TestClient admin() {
         return client().staff("admin@chuctu.vn");
