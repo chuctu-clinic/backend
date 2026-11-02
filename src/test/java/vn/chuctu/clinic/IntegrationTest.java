@@ -4,10 +4,14 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ContextConfiguration;
 import vn.chuctu.clinic.TestClocks.MutableBusinessClock;
+import vn.chuctu.clinic.account.User;
+import vn.chuctu.clinic.account.UserRepository;
+import vn.chuctu.clinic.security.SessionService;
 import vn.chuctu.clinic.TestClocks.MutableClock;
 
 /**
@@ -20,11 +24,36 @@ import vn.chuctu.clinic.TestClocks.MutableClock;
 @Import(TestClocks.class)
 public abstract class IntegrationTest {
 
+    @LocalServerPort protected int port;
     @Autowired protected JdbcTemplate jdbc;
+    @Autowired protected UserRepository users;
+    @Autowired protected SessionService sessions;
     /** Đồng hồ cho mọi chỗ dùng bean java.time.Clock. */
     @Autowired protected MutableClock clock;
     /** Đồng hồ của bốn quy tắc theo giờ (tương đương clock.now của Node); mặc định 10:00 hôm nay theo giờ Việt Nam. */
     @Autowired protected MutableBusinessClock businessClock;
+
+    /** Một trình duyệt mới (cookie riêng), tương đương request.agent(app). */
+    protected TestClient client() {
+        return new TestClient(port);
+    }
+
+    /** Tạo thẳng một tài khoản trong database (seed chưa có), số điện thoại theo số thứ tự để không trùng. */
+    protected User createUser(String role) {
+        User user = new User();
+        user.setPhone("09" + String.format("%08d", users.count() + 1));
+        user.setFullName("Tài khoản " + role);
+        user.setRole(role);
+        return users.save(user);
+    }
+
+    /** Trình duyệt mới đã đăng nhập bằng cookie phiên hợp lệ của tài khoản này. */
+    protected TestClient loginAs(User user) {
+        var response = new org.springframework.mock.web.MockHttpServletResponse();
+        sessions.setSession(response, user, true);
+        String pair = response.getHeader("Set-Cookie").split(";")[0];
+        return client().cookie(SessionService.SESSION_COOKIE, pair.substring(pair.indexOf('=') + 1));
+    }
 
     @BeforeEach
     void resetDatabaseAndClocks() {

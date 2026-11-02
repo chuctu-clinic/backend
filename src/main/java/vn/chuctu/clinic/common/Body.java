@@ -1,0 +1,185 @@
+package vn.chuctu.clinic.common;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.function.UnaryOperator;
+import java.util.regex.Pattern;
+import tools.jackson.databind.JsonNode;
+
+/**
+ * Đọc và kiểm tra JSON gửi lên, thay cho zod trong utils/validate.js. Mỗi ô lỗi được ghi lại (giữ lỗi đầu tiên
+ * của từng ô, khoá lồng dùng dấu chấm, lỗi gốc dùng khoá "_"); gọi {@link #check()} sau cùng để ném VALIDATION.
+ * Trường lạ bị bỏ qua. Body không phải object (hoặc không có body) được xử lý như zod z.object.
+ */
+public final class Body {
+
+    /** Quy tắc cho một ô chuỗi bắt buộc: thứ tự trim, biến đổi, độ dài, kiểm tra riêng như chuỗi zod. */
+    public record Rule(String requiredMessage, boolean trim, UnaryOperator<String> transform, int min, String minMessage,
+            int max, String maxMessage, Function<String, String> problem) {
+
+        public static final Rule PHONE = new Rule("Cô chú vui lòng nhập số điện thoại.", false, Phones::normalize, 0, null,
+                Integer.MAX_VALUE, null, s -> Phones.problem(s, true));
+        public static final Rule FULL_NAME = new Rule("Cô chú vui lòng nhập họ và tên.", true, UnaryOperator.identity(), 2,
+                "Cô chú vui lòng nhập họ và tên.", 100, "Họ và tên quá dài.", null);
+
+        public static Rule required(String requiredMessage) {
+            return new Rule(requiredMessage, false, UnaryOperator.identity(), 0, null, Integer.MAX_VALUE, null, null);
+        }
+
+        public Rule trimmed() {
+            return new Rule(requiredMessage, true, transform, min, minMessage, max, maxMessage, problem);
+        }
+
+        public Rule min(int length, String message) {
+            return new Rule(requiredMessage, trim, transform, length, message, max, maxMessage, problem);
+        }
+
+        public Rule max(int length, String message) {
+            return new Rule(requiredMessage, trim, transform, min, minMessage, length, message, problem);
+        }
+
+        /** Kiểm tra riêng sau khi biến đổi: trả về lý do lỗi, null nếu hợp lệ. */
+        public Rule problem(Function<String, String> check) {
+            return new Rule(requiredMessage, trim, transform, min, minMessage, max, maxMessage, check);
+        }
+    }
+
+    private static final Pattern ID = Pattern.compile("^[1-9]\\d{0,18}$");
+    private static final Pattern DATE = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}$");
+
+    private final JsonNode root;
+    /** false khi body có nhưng không phải object: lỗi gốc đã ghi, không báo thêm từng ô. */
+    private final boolean objectBody;
+    private final Map<String, String> errors = new LinkedHashMap<>();
+
+    private Body(JsonNode root, boolean objectBody) {
+        this.root = root;
+        this.objectBody = objectBody;
+    }
+
+    /** null (không có body) coi như object rỗng, giống express.json. */
+    public static Body of(JsonNode node) {
+        if (node == null) return new Body(null, true);
+        Body body = new Body(node.isObject() ? node : null, node.isObject());
+        if (!node.isObject()) body.fail("_", "Expected object, received " + typeName(node));
+        return body;
+    }
+
+    /** Ghi lỗi cho một ô nếu ô đó chưa có lỗi. */
+    public void fail(String field, String message) {
+        errors.putIfAbsent(field, message);
+    }
+
+    /** Ném VALIDATION nếu đã có lỗi ở bất kỳ ô nào. */
+    public void check() {
+        if (!errors.isEmpty()) throw Errors.validation(new LinkedHashMap<>(errors));
+    }
+
+    public String requiredString(String field, Rule rule) {
+        JsonNode node = field(field);
+        if (node == null) {
+            if (objectBody) fail(field, rule.requiredMessage());
+            return null;
+        }
+        if (!node.isString()) {
+            fail(field, "Expected string, received " + typeName(node));
+            return null;
+        }
+        String s = node.stringValue();
+        if (rule.trim()) s = trim(s);
+        s = rule.transform().apply(s);
+        if (s.length() < rule.min()) fail(field, rule.minMessage());
+        else if (s.length() > rule.max()) fail(field, rule.maxMessage());
+        else if (rule.problem() != null) {
+            String problem = rule.problem().apply(s);
+            if (problem != null) fail(field, problem);
+        }
+        return s;
+    }
+
+    /** Không gửi: absent (giữ nguyên). Gửi null hoặc chuỗi rỗng: present(null) (xoá). Chuỗi được trim. */
+    public Opt<String> optionalText(String field, int max) {
+        JsonNode node = field(field);
+        if (node == null) return Opt.absent();
+        if (node.isNull()) return Opt.of(null);
+        if (!node.isString()) {
+            fail(field, "Expected string, received " + typeName(node));
+            return Opt.absent();
+        }
+        String s = trim(node.stringValue());
+        if (s.length() > max) fail(field, "Tối đa " + max + " ký tự.");
+        return Opt.of(s.isEmpty() ? null : s);
+    }
+
+    /** Ngày YYYY-MM-DD có thật. Không gửi: absent. Gửi null: present(null). */
+    public Opt<LocalDate> date(String field) {
+        JsonNode node = field(field);
+        if (node == null) return Opt.absent();
+        if (node.isNull()) return Opt.of(null);
+        if (!node.isString()) {
+            fail(field, "Expected string, received " + typeName(node));
+            return Opt.absent();
+        }
+        String s = node.stringValue();
+        if (DATE.matcher(s).matches()) {
+            try {
+                return Opt.of(LocalDate.parse(s));
+            } catch (DateTimeParseException e) {
+                // rơi xuống báo lỗi: ví dụ 30/02 không có thật
+            }
+        }
+        fail(field, "Ngày không hợp lệ.");
+        return Opt.absent();
+    }
+
+    /** Mã là chuỗi số nguyên dương vừa một long. Không gửi: absent. Gửi null: present(null). */
+    public Opt<Long> id(String field) {
+        JsonNode node = field(field);
+        if (node == null) return Opt.absent();
+        if (node.isNull()) return Opt.of(null);
+        if (!node.isString()) {
+            fail(field, "Expected string, received " + typeName(node));
+            return Opt.absent();
+        }
+        String s = node.stringValue();
+        if (ID.matcher(s).matches()) {
+            try {
+                return Opt.of(Long.parseLong(s));
+            } catch (NumberFormatException e) {
+                // quá lớn: rơi xuống báo lỗi
+            }
+        }
+        fail(field, "Mã không hợp lệ.");
+        return Opt.absent();
+    }
+
+    private JsonNode field(String name) {
+        return root == null ? null : root.get(name);
+    }
+
+    /** Tên kiểu như zod báo ("Expected string, received number"). */
+    private static String typeName(JsonNode node) {
+        if (node.isArray()) return "array";
+        if (node.isObject()) return "object";
+        if (node.isString()) return "string";
+        if (node.isBoolean()) return "boolean";
+        if (node.isNull()) return "null";
+        return "number";
+    }
+
+    /** String.prototype.trim của JavaScript: gồm cả khoảng trắng Unicode, NBSP và BOM. */
+    private static String trim(String s) {
+        int start = 0;
+        int end = s.length();
+        while (start < end && isJsSpace(s.charAt(start))) start++;
+        while (end > start && isJsSpace(s.charAt(end - 1))) end--;
+        return s.substring(start, end);
+    }
+
+    private static boolean isJsSpace(char c) {
+        return Character.isWhitespace(c) || Character.isSpaceChar(c) || c == '﻿';
+    }
+}
