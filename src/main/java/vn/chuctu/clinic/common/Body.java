@@ -27,6 +27,11 @@ public final class Body {
         public static final Rule FULL_NAME = new Rule("Cô chú vui lòng nhập họ và tên.", true, UnaryOperator.identity(), 2,
                 "Cô chú vui lòng nhập họ và tên.", 100, "Họ và tên quá dài.", null);
 
+        /** z.string().trim().toLowerCase().min(1).email(): regex email của zod 3. */
+        public static final Rule EMAIL = new Rule("Vui lòng nhập email.", true, v -> v.toLowerCase(java.util.Locale.ROOT), 1,
+                "Vui lòng nhập email.", Integer.MAX_VALUE, null,
+                s -> ZOD_EMAIL.matcher(s).matches() ? null : "Email chưa đúng, ví dụ ten@email.com.");
+
         public static Rule required(String requiredMessage) {
             return new Rule(requiredMessage, false, UnaryOperator.identity(), 0, null, Integer.MAX_VALUE, null, null);
         }
@@ -49,6 +54,8 @@ public final class Body {
         }
     }
 
+    private static final Pattern ZOD_EMAIL = Pattern.compile(
+            "^(?!\\.)(?!.*\\.\\.)([A-Z0-9_'+\\-\\.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9\\-]*\\.)+[A-Z]{2,}$", Pattern.CASE_INSENSITIVE);
     private static final Pattern ID = Pattern.compile("^[1-9]\\d{0,18}$");
     private static final Pattern DATE = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}$");
 

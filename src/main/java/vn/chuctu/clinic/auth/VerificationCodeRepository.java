@@ -16,6 +16,9 @@ public interface VerificationCodeRepository extends JpaRepository<VerificationCo
     List<VerificationCode> findByPhoneAndEmailIsNullAndCreatedAtGreaterThanEqualOrderByCreatedAtDescIdDesc(
             String phone, Instant since);
 
+    /** Các lần xin mã gửi tới địa chỉ email từ thời điểm {@code since}, mới nhất trước (tính theo email, không theo số điện thoại). */
+    List<VerificationCode> findByEmailAndCreatedAtGreaterThanEqualOrderByCreatedAtDescIdDesc(String email, Instant since);
+
     /** Mã còn dùng được (chưa dùng, chưa hết hạn) mới nhất của số điện thoại và mục đích. */
     Optional<VerificationCode> findFirstByPhoneAndPurposeAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDescIdDesc(
             String phone, String purpose, Instant now);

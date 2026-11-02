@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -22,12 +23,13 @@ import vn.chuctu.clinic.auth.OtpService.Proof;
 import vn.chuctu.clinic.common.AppProperties;
 import vn.chuctu.clinic.common.Errors;
 import vn.chuctu.clinic.common.Hmac;
+import vn.chuctu.clinic.common.Rules;
 import vn.chuctu.clinic.patient.PatientService;
 import vn.chuctu.clinic.patient.PatientService.PatientInput;
 
 /**
  * Đăng ký, đăng nhập không mật khẩu bằng mã tin nhắn (người dùng) và đăng nhập bằng mật khẩu (tiếp tân, quản trị).
- * Phần quên mật khẩu và đổi email thêm ở Task 4, kiểm token Firebase ở Task 5.
+ * Quên mật khẩu và đổi email của tài khoản nội bộ gửi mã qua email. Kiểm token Firebase thêm ở Task 5.
  */
 @Service
 public class AuthService {
@@ -47,6 +49,7 @@ public class AuthService {
     private final TrustedDeviceRepository devices;
     private final OtpService otp;
     private final PatientService patients;
+    private final ResetTokens resetTokens;
     private final AppProperties config;
     private final Clock clock;
     private final JsonMapper mapper;
@@ -54,11 +57,12 @@ public class AuthService {
     private final BCryptPasswordEncoder bcrypt = new BCryptPasswordEncoder(10);
 
     public AuthService(UserRepository users, TrustedDeviceRepository devices, OtpService otp, PatientService patients,
-            AppProperties config, Clock clock, JsonMapper mapper, TransactionTemplate tx) {
+            ResetTokens resetTokens, AppProperties config, Clock clock, JsonMapper mapper, TransactionTemplate tx) {
         this.users = users;
         this.devices = devices;
         this.otp = otp;
         this.patients = patients;
+        this.resetTokens = resetTokens;
         this.config = config;
         this.clock = clock;
         this.mapper = mapper;
@@ -225,5 +229,102 @@ public class AuthService {
         int end = BCRYPT_MAX_BYTES;
         while (end > 0 && (bytes[end] & 0xC0) == 0x80) end--;
         return new String(Arrays.copyOf(bytes, end), StandardCharsets.UTF_8);
+    }
+
+    // ---------- Nội bộ: quên mật khẩu (mã 6 số gửi qua email) ----------
+
+    private static RuntimeException resetExpired() {
+        return Errors.badRequest("Phiên đặt lại mật khẩu đã hết hạn. Cô chú làm lại từ bước nhập email.", null, "RESET_EXPIRED");
+    }
+
+    private static RuntimeException codeExpired() {
+        return Errors.badRequest("Mã xác nhận đã hết hạn. Cô chú bấm \"Gửi lại mã\" để nhận mã mới.", null, "CODE_EXPIRED");
+    }
+
+    private User activeStaffByEmail(String email) {
+        User user = users.findByEmail(email).orElse(null);
+        return user != null && user.isActive() && user.getPasswordHash() != null && user.isStaff() ? user : null;
+    }
+
+    /** Gửi mã tới email. Không cho biết email có thuộc tài khoản nội bộ đang hoạt động hay không. */
+    public Map<String, Object> startPasswordReset(String email) {
+        User user = activeStaffByEmail(email);
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (user == null) {
+            out.put("sent", true);
+            out.put("email", email);
+            out.put("expiresInSeconds", Rules.OTP_TTL_MINUTES * 60);
+            out.put("resendAfterSeconds", Rules.OTP_RESEND_SECONDS);
+            return out;
+        }
+        out.putAll(otp.issue(user.getPhone(), "RESET_PASSWORD", null, email));
+        out.put("email", email);
+        return out;
+    }
+
+    /** Mã đúng thì cấp token ngắn hạn để đặt mật khẩu mới. */
+    public Map<String, Object> verifyPasswordReset(String email, String code) {
+        User user = activeStaffByEmail(email);
+        if (user == null) throw codeExpired();
+        otp.verify(user.getPhone(), "RESET_PASSWORD", code);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("resetToken", resetTokens.sign(String.valueOf(user.getId()), resetTokens.passwordStamp(user.getPasswordHash())));
+        out.put("expiresInSeconds", ResetTokens.MINUTES * 60);
+        return out;
+    }
+
+    /**
+     * Đặt mật khẩu mới bằng token. Băm bcrypt chậm nên ghi bằng một UPDATE có điều kiện "mật khẩu vẫn như lúc kiểm":
+     * hai yêu cầu cùng token thì chỉ một cái thành công, cái còn lại báo hết hạn.
+     */
+    public void resetPassword(String token, String newPassword) {
+        ResetTokens.Claims claims = resetTokens.verify(token);
+        if (claims == null || !claims.sub().matches("^[1-9]\\d{0,18}$")) throw resetExpired();
+        User user = users.findById(Long.parseLong(claims.sub())).orElse(null);
+        if (user == null || !user.isActive() || user.getPasswordHash() == null || !user.isStaff()
+                || !claims.pw().equals(resetTokens.passwordStamp(user.getPasswordHash()))) {
+            throw resetExpired();
+        }
+        if (users.resetPassword(user.getId(), hashPassword(newPassword), user.getPasswordHash(), now()) == 0) {
+            throw resetExpired();
+        }
+    }
+
+    // ---------- Nội bộ: tự sửa họ tên, đổi email (mã 6 số gửi tới email mới) ----------
+
+    public User updateFullName(User user, String fullName) {
+        users.updateFullName(user.getId(), fullName, now());
+        user.setFullName(fullName);
+        return user;
+    }
+
+    private static RuntimeException emailTaken() {
+        return Errors.conflict("Email này đã dùng cho tài khoản khác.", "EMAIL_TAKEN",
+                Map.of("fields", Map.of("email", "Email này đã dùng cho tài khoản khác.")));
+    }
+
+    /** Gửi mã tới email mới; email chỉ đổi sau khi nhập đúng mã. */
+    public Map<String, Object> startEmailChange(User user, String email) {
+        if (email.equals(user.getEmail())) {
+            throw Errors.badRequest("Email mới trùng với email đang dùng.",
+                    Map.of("fields", Map.of("email", "Email mới trùng với email đang dùng.")), "BAD_REQUEST");
+        }
+        if (users.existsByEmailAndIdNot(email, user.getId())) throw emailTaken();
+        ObjectNode data = mapper.createObjectNode();
+        data.put("email", email);
+        Map<String, Object> out = new LinkedHashMap<>(otp.issue(user.getPhone(), "CHANGE_EMAIL", data, email));
+        out.put("email", email);
+        return out;
+    }
+
+    public User confirmEmailChange(User user, String code) {
+        VerificationCode doc = otp.verify(user.getPhone(), "CHANGE_EMAIL", code);
+        Object email = doc.getRegisterData() == null ? null : doc.getRegisterData().get("email");
+        if (!(email instanceof String address) || address.isEmpty()) throw codeExpired();
+        // Trong lúc chờ mã, email có thể đã được gán cho tài khoản khác
+        if (users.existsByEmailAndIdNot(address, user.getId())) throw emailTaken();
+        users.updateEmail(user.getId(), address, now());
+        user.setEmail(address);
+        return user;
     }
 }

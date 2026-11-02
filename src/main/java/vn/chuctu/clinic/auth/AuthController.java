@@ -26,7 +26,7 @@ import vn.chuctu.clinic.common.VnTime;
 import vn.chuctu.clinic.security.CurrentUser;
 import vn.chuctu.clinic.security.SessionService;
 
-/** /api/auth: đăng ký, đăng nhập, đổi mật khẩu, đăng xuất (routes/auth.routes.js). Quên mật khẩu thêm ở Task 4. */
+/** /api/auth: đăng ký, đăng nhập, đổi mật khẩu, đăng xuất (routes/auth.routes.js). */
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
@@ -158,6 +158,39 @@ public class AuthController {
         User user = auth.staffLogin(identifier, password);
         sessions.setSession(response, user, true);
         return Map.of("user", user.toPublic());
+    }
+
+    // Quên mật khẩu: email, mã 6 số, token ngắn hạn, mật khẩu mới
+
+    private static final Rule RESET_CODE = Rule.required("Required")
+            .problem(s -> SIX_DIGITS.matcher(s).matches() ? null : "Vui lòng nhập đủ 6 số.");
+
+    @PostMapping("/staff/forgot-password")
+    Map<String, Object> forgotPassword(@RequestBody(required = false) JsonNode json) {
+        Body body = Body.of(json);
+        String email = body.requiredString("email", Rule.EMAIL);
+        body.check();
+        return auth.startPasswordReset(email);
+    }
+
+    @PostMapping("/staff/forgot-password/verify")
+    Map<String, Object> forgotPasswordVerify(@RequestBody(required = false) JsonNode json) {
+        Body body = Body.of(json);
+        String email = body.requiredString("email", Rule.EMAIL);
+        String code = body.requiredString("code", RESET_CODE);
+        body.check();
+        return auth.verifyPasswordReset(email, code);
+    }
+
+    @PostMapping("/staff/reset-password")
+    Map<String, Object> resetPassword(@RequestBody(required = false) JsonNode json) {
+        Body body = Body.of(json);
+        String token = body.requiredString("token", Rule.required("Required").min(1, "String must contain at least 1 character(s)"));
+        String newPassword = body.requiredString("newPassword", Rule.required("Vui lòng nhập mật khẩu mới.")
+                .min(Rules.MIN_PASSWORD_LENGTH, "Mật khẩu cần ít nhất " + Rules.MIN_PASSWORD_LENGTH + " ký tự."));
+        body.check();
+        auth.resetPassword(token, newPassword);
+        return Map.of("ok", true);
     }
 
     @PostMapping("/change-password")

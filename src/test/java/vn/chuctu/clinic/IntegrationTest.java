@@ -23,7 +23,7 @@ import vn.chuctu.clinic.TestClocks.MutableClock;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ContextConfiguration(initializers = TestDatabase.class)
-@Import(TestClocks.class)
+@Import({TestClocks.class, FakeMail.Config.class})
 public abstract class IntegrationTest {
 
     @LocalServerPort protected int port;
@@ -31,6 +31,8 @@ public abstract class IntegrationTest {
     @Autowired protected UserRepository users;
     @Autowired protected AppProperties config;
     @Autowired protected SessionService sessions;
+    /** Thư đã "gửi" trong test; bộ gửi SMTP thật không bao giờ chạy. */
+    @Autowired protected FakeMail mail;
     /** Đồng hồ cho mọi chỗ dùng bean java.time.Clock. */
     @Autowired protected MutableClock clock;
     /** Đồng hồ của bốn quy tắc theo giờ (tương đương clock.now của Node); mặc định 10:00 hôm nay theo giờ Việt Nam. */
@@ -64,6 +66,7 @@ public abstract class IntegrationTest {
         seedBaselineData();
         clock.reset();
         businessClock.reset();
+        mail.reset();
     }
 
     private void wipeAllTables() {

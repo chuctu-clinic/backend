@@ -35,13 +35,15 @@ public class OtpService {
 
     private final VerificationCodeRepository codes;
     private final SmsGateway sms;
+    private final EmailGateway emailGateway;
     private final AppProperties config;
     private final Clock clock;
     private final JsonMapper mapper;
 
-    public OtpService(VerificationCodeRepository codes, SmsGateway sms, AppProperties config, Clock clock, JsonMapper mapper) {
+    public OtpService(VerificationCodeRepository codes, SmsGateway sms, EmailGateway emailGateway, AppProperties config, Clock clock, JsonMapper mapper) {
         this.codes = codes;
         this.sms = sms;
+        this.emailGateway = emailGateway;
         this.config = config;
         this.clock = clock;
         this.mapper = mapper;
@@ -53,14 +55,17 @@ public class OtpService {
     }
 
     /**
-     * Gửi mã xác nhận, chờ 60 giây giữa hai lần gửi cùng loại mã (BR.03), tối đa 3 mã mỗi giờ cho mỗi số điện thoại.
-     * Mã luôn gắn với số điện thoại của tài khoản. Gửi email (tham số email) thuộc Task 4.
+     * Gửi mã xác nhận, chờ 60 giây giữa hai lần gửi cùng loại mã (BR.03). Giới hạn mỗi giờ tính riêng: tin nhắn 3 mã cho
+     * mỗi số điện thoại, email 5 mã cho mỗi địa chỉ email. Mã luôn gắn với số điện thoại của tài khoản; có {@code email}
+     * thì gửi mã tới email đó thay vì tin nhắn.
      */
     public Map<String, Object> issue(String phone, String purpose, JsonNode registerData, String email) {
-        if (email != null) throw new UnsupportedOperationException("Gửi mã qua email thuộc Task 4");
         Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
-        List<VerificationCode> recent = codes.findByPhoneAndEmailIsNullAndCreatedAtGreaterThanEqualOrderByCreatedAtDescIdDesc(
-                phone, now.minus(1, ChronoUnit.HOURS));
+        Instant since = now.minus(1, ChronoUnit.HOURS);
+        List<VerificationCode> recent = email != null
+                ? codes.findByEmailAndCreatedAtGreaterThanEqualOrderByCreatedAtDescIdDesc(email, since)
+                : codes.findByPhoneAndEmailIsNullAndCreatedAtGreaterThanEqualOrderByCreatedAtDescIdDesc(phone, since);
+        int maxPerHour = email != null ? Rules.OTP_EMAIL_MAX_PER_HOUR : Rules.OTP_MAX_PER_HOUR;
 
         for (VerificationCode c : recent) {
             if (!c.getPurpose().equals(purpose)) continue;
@@ -70,10 +75,10 @@ public class OtpService {
             }
             break;
         }
-        if (recent.size() >= Rules.OTP_MAX_PER_HOUR) {
+        if (recent.size() >= maxPerHour) {
             long oldest = recent.get(recent.size() - 1).getCreatedAt().toEpochMilli();
             long waitMin = ceilDiv(oldest + 3_600_000L - now.toEpochMilli(), 60_000);
-            throw Errors.tooMany("Số điện thoại này đã nhận đủ " + Rules.OTP_MAX_PER_HOUR
+            throw Errors.tooMany((email != null ? "Email" : "Số điện thoại") + " này đã nhận đủ " + maxPerHour
                     + " mã trong một giờ. Cô chú vui lòng thử lại sau khoảng " + waitMin
                     + " phút hoặc gọi phòng khám để được giúp.", Map.of("retryAfter", waitMin * 60));
         }
@@ -82,10 +87,12 @@ public class OtpService {
         codes.expireOpenCodes(phone, purpose, now);
 
         // Firebase: trình duyệt tự gửi mã; ở đây chỉ ghi nhận lần xin mã (để giữ giới hạn và đối chiếu khi xác nhận)
-        boolean firebase = sms.usesFirebase();
-        String code = firebase ? null : randomCode();
+        boolean firebase = email == null && sms.usesFirebase();
+        String fixed = email != null ? emailGateway.devFixedCode() : null;
+        String code = firebase ? null : fixed != null ? fixed : randomCode();
         VerificationCode record = new VerificationCode();
         record.setPhone(phone);
+        record.setEmail(email);
         record.setPurpose(purpose);
         record.setCodeHash(firebase ? "firebase" : hashCode(phone, purpose, code));
         record.setRegisterData(registerData == null || registerData.isNull() ? null : mapper.convertValue(registerData, MAP));
@@ -93,7 +100,8 @@ public class OtpService {
         record.setCreatedAt(now);
         record = codes.save(record);
         try {
-            if (!firebase) sms.sendVerificationCode(phone, code, purpose);
+            if (email != null) emailGateway.sendCode(email, code, purpose);
+            else if (!firebase) sms.sendVerificationCode(phone, code, purpose);
         } catch (RuntimeException e) {
             // Gửi không được thì không tính lần xin mã này
             codes.deleteById(record.getId());
@@ -105,7 +113,7 @@ public class OtpService {
         out.put("provider", firebase ? "firebase" : "server");
         out.put("expiresInSeconds", Rules.OTP_TTL_MINUTES * 60);
         out.put("resendAfterSeconds", Rules.OTP_RESEND_SECONDS);
-        if (sms.exposeCodeForDev()) out.put("devCode", code);
+        if (email != null ? emailGateway.exposeCodeForDev() : sms.exposeCodeForDev()) out.put("devCode", code);
         return out;
     }
 

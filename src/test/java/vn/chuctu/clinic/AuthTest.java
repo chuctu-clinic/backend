@@ -23,6 +23,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import vn.chuctu.clinic.account.User;
 import vn.chuctu.clinic.auth.AuthService;
+import vn.chuctu.clinic.auth.EmailGateway;
 import vn.chuctu.clinic.auth.OtpService;
 import vn.chuctu.clinic.auth.OtpService.Proof;
 import vn.chuctu.clinic.auth.SmsGateway;
@@ -273,7 +274,6 @@ class AuthTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 4")
     @DisplayName("admin và tiếp tân tự sửa họ tên, không sửa được số điện thoại, email, vai trò")
     void tuSuaHoTen() {
         for (String identifier : List.of("admin@chuctu.vn", "letan@chuctu.vn")) {
@@ -289,7 +289,6 @@ class AuthTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 4")
     @DisplayName("họ tên để trống thì báo lỗi theo trường")
     void hoTenTrong() {
         var agent = client().staff();
@@ -641,7 +640,7 @@ class AuthTest extends IntegrationTest {
     void firebaseChiGhiNhanLanXinMa() {
         var firebaseConfig = new AppProperties(new MockEnvironment().withProperty("SMS_PROVIDER", "firebase"));
         var gateway = new SmsGateway(firebaseConfig);
-        var firebaseOtp = new OtpService(codes, gateway, firebaseConfig, clock, mapper);
+        var firebaseOtp = new OtpService(codes, gateway, new EmailGateway(firebaseConfig, mail), firebaseConfig, clock, mapper);
 
         Map<String, Object> out = firebaseOtp.issue("0911000018", "NEW_DEVICE", null, null);
         assertThat(out).containsEntry("provider", "firebase").containsEntry("sent", true).doesNotContainKey("devCode");
