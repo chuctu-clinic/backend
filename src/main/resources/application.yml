@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: clinic
+  config:
+    # Đọc .env cạnh project (định dạng KEY=VALUE). Biến môi trường của hệ điều hành được ưu tiên hơn.
+    import: optional:file:.env[.properties]
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+
+server:
+  port: ${PORT:4000}

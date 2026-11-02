@@ -1,0 +1,16 @@
+# Bí mật và cấu hình máy cá nhân: không bao giờ đưa vào git
+.env
+
+# Build
+target/
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+.factorypath
+.sts4-cache/
