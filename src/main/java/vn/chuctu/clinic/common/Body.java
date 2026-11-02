@@ -63,6 +63,8 @@ public final class Body {
     /** false khi body có nhưng không phải object: lỗi gốc đã ghi, không báo thêm từng ô. */
     private final boolean objectBody;
     private final Map<String, String> errors = new LinkedHashMap<>();
+    /** zod bỏ qua refine của cả object khi có ô lỗi kiểu (thiếu, sai kiểu, sai enum); lỗi chuỗi hay số thì vẫn chạy refine. */
+    private boolean aborted;
 
     private Body(JsonNode root, boolean objectBody) {
         this.root = root;
@@ -73,13 +75,44 @@ public final class Body {
     public static Body of(JsonNode node) {
         if (node == null) return new Body(null, true);
         Body body = new Body(node.isObject() ? node : null, node.isObject());
-        if (!node.isObject()) body.fail("_", "Expected object, received " + typeName(node));
+        if (!node.isObject()) body.abort("_", "Expected object, received " + typeName(node));
         return body;
     }
 
     /** Ghi lỗi cho một ô nếu ô đó chưa có lỗi. */
     public void fail(String field, String message) {
         errors.putIfAbsent(field, message);
+    }
+
+    /** Như {@link #fail} cho lỗi kiểu (thiếu, sai kiểu, sai enum): zod coi ô đó là hỏng hẳn và không chạy refine của object. */
+    public void abort(String field, String message) {
+        aborted = true;
+        fail(field, message);
+    }
+
+    /** Có ô nào hỏng hẳn chưa (xem {@link #abort}). */
+    public boolean aborted() {
+        return aborted;
+    }
+
+    /** Body có phải object không (không phải thì lỗi gốc đã ghi, không báo thêm ô thiếu). */
+    public boolean isObject() {
+        return objectBody;
+    }
+
+    /** Giá trị thô của ô: null nếu không gửi; JSON null là một NullNode. */
+    public JsonNode node(String field) {
+        return field(field);
+    }
+
+    /** String.prototype.trim của JavaScript. */
+    public static String jsTrim(String s) {
+        return trim(s);
+    }
+
+    /** Email đúng theo regex của zod. */
+    public static boolean isEmail(String s) {
+        return ZOD_EMAIL.matcher(s).matches();
     }
 
     /** Ném VALIDATION nếu đã có lỗi ở bất kỳ ô nào. */
@@ -90,11 +123,11 @@ public final class Body {
     public String requiredString(String field, Rule rule) {
         JsonNode node = field(field);
         if (node == null) {
-            if (objectBody) fail(field, rule.requiredMessage());
+            if (objectBody) abort(field, rule.requiredMessage());
             return null;
         }
         if (!node.isString()) {
-            fail(field, "Expected string, received " + typeName(node));
+            abort(field, "Expected string, received " + typeName(node));
             return null;
         }
         String s = node.stringValue();
@@ -115,7 +148,7 @@ public final class Body {
         if (node == null) return Opt.absent();
         if (node.isNull()) return Opt.of(null);
         if (!node.isString()) {
-            fail(field, "Expected string, received " + typeName(node));
+            abort(field, "Expected string, received " + typeName(node));
             return Opt.absent();
         }
         String s = trim(node.stringValue());
@@ -129,7 +162,7 @@ public final class Body {
         if (node == null) return Opt.absent();
         if (node.isNull()) return Opt.of(null);
         if (!node.isString()) {
-            fail(field, "Expected string, received " + typeName(node));
+            abort(field, "Expected string, received " + typeName(node));
             return Opt.absent();
         }
         String s = node.stringValue();
@@ -150,7 +183,7 @@ public final class Body {
         if (node == null) return Opt.absent();
         if (node.isNull()) return Opt.of(null);
         if (!node.isString()) {
-            fail(field, "Expected string, received " + typeName(node));
+            abort(field, "Expected string, received " + typeName(node));
             return Opt.absent();
         }
         String s = node.stringValue();
@@ -172,11 +205,11 @@ public final class Body {
     public LocalDate requiredDate(String field) {
         JsonNode node = field(field);
         if (node == null) {
-            if (objectBody) fail(field, "Required");
+            if (objectBody) abort(field, "Required");
             return null;
         }
         if (node.isNull()) {
-            fail(field, "Expected string, received null");
+            abort(field, "Expected string, received null");
             return null;
         }
         Opt<LocalDate> date = date(field);
@@ -191,16 +224,16 @@ public final class Body {
         JsonNode node = field(field);
         String expected = allowed.stream().map(v -> "'" + v + "'").collect(Collectors.joining(" | "));
         if (node == null) {
-            if (objectBody) fail(field, customMessage != null ? customMessage : "Required");
+            if (objectBody) abort(field, customMessage != null ? customMessage : "Required");
             return null;
         }
         if (!node.isString()) {
-            fail(field, customMessage != null ? customMessage : "Expected " + expected + ", received " + typeName(node));
+            abort(field, customMessage != null ? customMessage : "Expected " + expected + ", received " + typeName(node));
             return null;
         }
         String s = node.stringValue();
         if (!allowed.contains(s)) {
-            fail(field, customMessage != null ? customMessage : "Invalid enum value. Expected " + expected + ", received '" + s + "'");
+            abort(field, customMessage != null ? customMessage : "Invalid enum value. Expected " + expected + ", received '" + s + "'");
             return null;
         }
         return s;
@@ -214,7 +247,7 @@ public final class Body {
         JsonNode node = field(field);
         if (node == null) return Opt.absent();
         if (!node.isString()) {
-            fail(field, "Expected string, received " + typeName(node));
+            abort(field, "Expected string, received " + typeName(node));
             return Opt.absent();
         }
         String s = node.stringValue();
@@ -223,12 +256,32 @@ public final class Body {
         return Opt.of(s);
     }
 
+    /**
+     * z.union([chuỗi có kiểm tra, z.literal(""), z.null()]).optional().transform(v => v || null): không gửi là absent; null hoặc
+     * chuỗi rỗng đúng nghĩa là present(null) (xoá); chuỗi khác đi qua {@code prepare} (trim, chuẩn hoá) rồi {@code problem}
+     * (trả lý do lỗi đầu tiên, null nếu hợp lệ). Kiểu khác chuỗi: zod báo "Invalid input" vì không nhánh nào khớp.
+     */
+    public Opt<String> clearableString(String field, UnaryOperator<String> prepare, Function<String, String> problem) {
+        JsonNode node = field(field);
+        if (node == null) return Opt.absent();
+        if (node.isNull()) return Opt.of(null);
+        if (!node.isString()) {
+            abort(field, "Invalid input");
+            return Opt.absent();
+        }
+        if (node.stringValue().isEmpty()) return Opt.of(null);
+        String s = prepare.apply(node.stringValue());
+        String message = problem.apply(s);
+        if (message != null) fail(field, message);
+        return Opt.of(s.isEmpty() ? null : s);
+    }
+
     /** z.boolean().optional().default(fallback). */
     public boolean optionalBoolean(String field, boolean fallback) {
         JsonNode node = field(field);
         if (node == null) return fallback;
         if (!node.isBoolean()) {
-            fail(field, "Expected boolean, received " + typeName(node));
+            abort(field, "Expected boolean, received " + typeName(node));
             return fallback;
         }
         return node.booleanValue();

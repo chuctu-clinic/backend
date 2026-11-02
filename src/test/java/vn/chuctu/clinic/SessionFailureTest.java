@@ -26,6 +26,6 @@ class SessionFailureTest extends IntegrationTest {
         assertThat(anonymous.json().get("user").isNull()).isTrue();
         assertThat(anonymous.headers().allValues("set-cookie"))
                 .anySatisfy(c -> assertThat(c).startsWith("ct_session=;").contains("Max-Age=0"));
-        loginAs(user).get("/api/me/_probe").expectStatus(401);
+        loginAs(user).get("/api/me").expectStatus(401);
     }
 }

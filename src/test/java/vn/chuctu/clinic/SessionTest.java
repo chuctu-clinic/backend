@@ -65,7 +65,7 @@ class SessionTest extends IntegrationTest {
         var res = client().cookie("ct_session", token).get("/api/auth/me").expectStatus(200);
         assertThat(res.json().get("user").isNull()).isTrue();
         assertSessionCookieCleared(res);
-        client().cookie("ct_session", token).get("/api/me/_probe").expectStatus(401);
+        client().cookie("ct_session", token).get("/api/me").expectStatus(401);
     }
 
     @Test
@@ -73,7 +73,7 @@ class SessionTest extends IntegrationTest {
     void jwtSaiChuKyBiXoaCookie() throws Exception {
         User user = createUser("USER");
         String forged = jwt("mot-khoa-khac-hoan-toan-0123456789abcdef", HS256, payload(String.valueOf(user.getId()), inOneHour()));
-        var res = client().cookie("ct_session", forged).get("/api/me/_probe").expectStatus(401);
+        var res = client().cookie("ct_session", forged).get("/api/me").expectStatus(401);
         assertSessionCookieCleared(res);
     }
 
@@ -83,11 +83,11 @@ class SessionTest extends IntegrationTest {
         User user = createUser("USER");
         String id = String.valueOf(user.getId());
         String expired = jwt(config.jwtSecret, HS256, payload(id, Instant.now().getEpochSecond() - 10));
-        assertSessionCookieCleared(client().cookie("ct_session", expired).get("/api/me/_probe").expectStatus(401));
+        assertSessionCookieCleared(client().cookie("ct_session", expired).get("/api/me").expectStatus(401));
         String none = b64("{\"alg\":\"none\"}".getBytes(StandardCharsets.UTF_8)) + "."
                 + b64(payload(id, inOneHour()).getBytes(StandardCharsets.UTF_8)) + ".";
-        assertSessionCookieCleared(client().cookie("ct_session", none).get("/api/me/_probe").expectStatus(401));
-        client().cookie("ct_session", "khong.phai.jwt").get("/api/me/_probe").expectStatus(401);
+        assertSessionCookieCleared(client().cookie("ct_session", none).get("/api/me").expectStatus(401));
+        client().cookie("ct_session", "khong.phai.jwt").get("/api/me").expectStatus(401);
     }
 
     @Test
@@ -95,11 +95,11 @@ class SessionTest extends IntegrationTest {
     void taiKhoanBiKhoaMatPhienNgay() {
         User user = createUser("USER");
         var browser = loginAs(user);
-        assertThat(browser.get("/api/me/_probe").expectStatus(200).json().get("id").stringValue())
+        assertThat(browser.get("/api/me").expectStatus(200).json().get("user").get("id").stringValue())
                 .isEqualTo(String.valueOf(user.getId()));
         user.setActive(false);
         users.save(user);
-        assertSessionCookieCleared(browser.get("/api/me/_probe").expectStatus(401));
+        assertSessionCookieCleared(browser.get("/api/me").expectStatus(401));
     }
 
     @Test
@@ -107,15 +107,15 @@ class SessionTest extends IntegrationTest {
     void lechXSessionUserTra409() {
         User user = createUser("USER");
         var browser = loginAs(user);
-        var res = browser.header("x-session-user", "999999").get("/api/me/_probe").expectStatus(409);
+        var res = browser.header("x-session-user", "999999").get("/api/me").expectStatus(409);
         assertThat(res.json().get("error").get("code").stringValue()).isEqualTo("SESSION_CHANGED");
         assertThat(res.json().get("error").get("message").stringValue())
                 .isEqualTo("Tài khoản trên trình duyệt này vừa thay đổi ở một thẻ khác. Trang sẽ tải lại theo tài khoản hiện tại.");
         // /api/auth/* vẫn qua để tab tự cập nhật lại
         browser.get("/api/auth/me").expectStatus(200);
         // Đúng tài khoản thì qua; chưa đăng nhập mà tab nhớ một tài khoản cũng bị từ chối
-        loginAs(user).header("x-session-user", String.valueOf(user.getId())).get("/api/me/_probe").expectStatus(200);
-        client().header("x-session-user", "5").get("/api/me/_probe").expectStatus(409);
+        loginAs(user).header("x-session-user", String.valueOf(user.getId())).get("/api/me").expectStatus(200);
+        client().header("x-session-user", "5").get("/api/me").expectStatus(409);
     }
 
     @Test
@@ -152,28 +152,28 @@ class SessionTest extends IntegrationTest {
     @Test
     @DisplayName("[java] phân quyền theo URL")
     void phanQuyenTheoUrl() {
-        client().get("/api/me/_probe").expectStatus(401);
-        client().get("/api/staff/_probe").expectStatus(401);
+        client().get("/api/me").expectStatus(401);
+        client().get("/api/staff/patients").expectStatus(401);
         client().get("/api/admin/_probe").expectStatus(401);
         client().get("/api/auth/_probe/require").expectStatus(401);
-        var unauthorized = client().get("/api/me/_probe").json().get("error");
+        var unauthorized = client().get("/api/me").json().get("error");
         assertThat(unauthorized.get("code").stringValue()).isEqualTo("UNAUTHORIZED");
         assertThat(unauthorized.get("message").stringValue()).isEqualTo("Cô chú vui lòng đăng nhập để tiếp tục.");
 
         var user = loginAs(createUser("USER"));
-        user.get("/api/me/_probe").expectStatus(200);
-        var forbidden = user.get("/api/staff/_probe").expectStatus(403).json().get("error");
+        user.get("/api/me").expectStatus(200);
+        var forbidden = user.get("/api/staff/patients").expectStatus(403).json().get("error");
         assertThat(forbidden.get("code").stringValue()).isEqualTo("FORBIDDEN");
         assertThat(forbidden.get("message").stringValue()).isEqualTo("Tài khoản không có quyền thực hiện thao tác này.");
         user.get("/api/admin/_probe").expectStatus(403);
 
         var receptionist = loginAs(createUser("RECEPTIONIST"));
-        receptionist.get("/api/staff/_probe").expectStatus(200);
+        receptionist.get("/api/staff/patients").expectStatus(200);
         receptionist.get("/api/admin/_probe").expectStatus(403);
-        receptionist.get("/api/me/_probe").expectStatus(403);
+        receptionist.get("/api/me").expectStatus(403);
 
         var admin = loginAs(createUser("ADMIN"));
-        admin.get("/api/staff/_probe").expectStatus(200);
+        admin.get("/api/staff/patients").expectStatus(200);
         admin.get("/api/admin/_probe").expectStatus(200);
         admin.get("/api/auth/_probe/require").expectStatus(200);
     }
@@ -185,7 +185,7 @@ class SessionTest extends IntegrationTest {
         staff.setMustChangePassword(true);
         users.save(staff);
         var browser = loginAs(staff);
-        var res = browser.get("/api/staff/_probe").expectStatus(403);
+        var res = browser.get("/api/staff/patients").expectStatus(403);
         assertThat(res.json().get("error").get("message").stringValue()).isEqualTo("Cô chú cần đổi mật khẩu tạm trước khi tiếp tục.");
         // Vai trò sai vẫn báo thông thường; API /auth vẫn dùng được để đổi mật khẩu
         assertThat(browser.get("/api/admin/_probe").expectStatus(403).json().get("error").get("message").stringValue())
@@ -197,7 +197,7 @@ class SessionTest extends IntegrationTest {
     @DisplayName("[java] cookie ct_staff của bản cũ bị bỏ qua")
     void cookieCtStaffBiBoQua() {
         String token = tokenOf(createUser("RECEPTIONIST"));
-        var res = client().cookie("ct_staff", token).get("/api/staff/_probe").expectStatus(401);
+        var res = client().cookie("ct_staff", token).get("/api/staff/patients").expectStatus(401);
         assertThat(res.headers().allValues("set-cookie")).isEmpty();
     }
 
@@ -207,7 +207,7 @@ class SessionTest extends IntegrationTest {
         User user = createUser("USER");
         user.setMustChangePassword(true);
         users.save(user);
-        loginAs(user).get("/api/me/_probe").expectStatus(200);
+        loginAs(user).get("/api/me").expectStatus(200);
     }
 
     @Test

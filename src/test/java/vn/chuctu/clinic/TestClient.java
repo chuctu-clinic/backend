@@ -89,6 +89,17 @@ public final class TestClient {
         return send("POST", path, MAPPER.writeValueAsString(body));
     }
 
+    public Result patch(String path, Object body) {
+        return send("PATCH", path, MAPPER.writeValueAsString(body));
+    }
+
+    /** Object JSON từ các cặp khoá, giá trị (cho phép null, khác Map.of). */
+    public static Map<String, Object> body(Object... keyValues) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (int i = 0; i < keyValues.length; i += 2) map.put((String) keyValues[i], keyValues[i + 1]);
+        return map;
+    }
+
     public Result send(String method, String path, String json) {
         return send(method, path, json, "application/json");
     }

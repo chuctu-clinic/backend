@@ -50,8 +50,8 @@ class FirebaseTest extends IntegrationTest {
         firebase.phone = "+84911000077";
         var res = verify(agent, FakeFirebase.TOKEN).expectStatus(201);
         assertThat(res.json().get("user").get("fullName").stringValue()).isEqualTo("Lê Thị Firebase");
-        // GET /api/me thuộc Task 6: ở đây chỉ kiểm có cookie phiên
         assertThat(res.headers().allValues("set-cookie")).anyMatch(c -> c.startsWith(SessionService.SESSION_COOKIE + "="));
+        agent.get("/api/me").expectStatus(200);
     }
 
     @Test

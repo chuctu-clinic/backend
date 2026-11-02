@@ -9,12 +9,17 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.time.LocalDate;
+import org.hibernate.annotations.DynamicUpdate;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-/** Hồ sơ khám bệnh (bảng patients). Một tài khoản có tối đa 10 hồ sơ, trong đó một hồ sơ BAN_THAN của chính chủ. */
+/**
+ * Hồ sơ khám bệnh (bảng patients). Một tài khoản có tối đa 10 hồ sơ, trong đó một hồ sơ BAN_THAN của chính chủ.
+ * DynamicUpdate: chỉ ghi các cột đã đổi, để khoá hồ sơ hay đồng bộ tài khoản không đè thay đổi khác vừa có.
+ */
 @Entity
+@DynamicUpdate
 @Table(name = "patients")
 @EntityListeners(AuditingEntityListener.class)
 public class Patient {

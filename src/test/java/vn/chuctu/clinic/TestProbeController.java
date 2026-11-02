@@ -32,16 +32,6 @@ public class TestProbeController {
         return who(currentUser.require());
     }
 
-    @GetMapping("/api/me/_probe")
-    Map<String, Object> me() {
-        return who(currentUser.require());
-    }
-
-    @GetMapping("/api/staff/_probe")
-    Map<String, Object> staff() {
-        return who(currentUser.require());
-    }
-
     @GetMapping("/api/admin/_probe")
     Map<String, Object> admin() {
         return who(currentUser.require());

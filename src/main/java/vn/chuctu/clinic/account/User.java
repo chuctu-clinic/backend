@@ -12,6 +12,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.hibernate.annotations.DynamicUpdate;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -19,6 +20,7 @@ import vn.chuctu.clinic.common.Constants;
 
 /** Tài khoản đăng nhập (bảng users): người dùng, tiếp tân và quản trị viên. */
 @Entity
+@DynamicUpdate
 @Table(name = "users")
 @EntityListeners(AuditingEntityListener.class)
 public class User {
