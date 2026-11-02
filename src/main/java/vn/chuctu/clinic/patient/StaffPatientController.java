@@ -24,6 +24,7 @@ import vn.chuctu.clinic.common.Errors;
 import vn.chuctu.clinic.common.Paging;
 import vn.chuctu.clinic.common.VnTime;
 import vn.chuctu.clinic.patient.PatientForms.PatientData;
+import vn.chuctu.clinic.record.RecordService;
 import vn.chuctu.clinic.security.CurrentUser;
 
 /** Hồ sơ bệnh nhân của Tiếp tân và Admin (UC.9.1 đến UC.9.5, UC.9.8), phần hồ sơ của routes/staff.routes.js. */
@@ -35,10 +36,13 @@ public class StaffPatientController {
 
     private final PatientService patients;
     private final AppointmentService appointments;
+    private final RecordService records;
     private final CurrentUser currentUser;
     private final Clock clock;
 
-    public StaffPatientController(PatientService patients, AppointmentService appointments, CurrentUser currentUser, Clock clock) {
+    public StaffPatientController(PatientService patients, AppointmentService appointments, RecordService records, CurrentUser currentUser,
+            Clock clock) {
+        this.records = records;
         this.patients = patients;
         this.appointments = appointments;
         this.currentUser = currentUser;
@@ -101,8 +105,7 @@ public class StaffPatientController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("patient", patients.toPublic(patient));
         out.put("appointments", appointments.listPatientAppointments(patient.getId()));
-        // Bệnh án (Task 9, listPatientRecords) nối vào đây
-        out.put("records", List.of());
+        out.put("records", records.listPatientRecords(patient.getId()));
         return out;
     }
 

@@ -7,7 +7,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -212,10 +211,25 @@ class QueueTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 9")
     @DisplayName("tối đa 5 người trong phòng, tự động mời người kế tiếp khi còn ghế (BR.29)")
     void toiDa5NguoiTrongPhong() {
-        // Node lưu phiếu kết quả qua POST /record (Task 9). Bản [java] bên dưới dùng QueueService.completeCheckin, bước cuối của việc đó.
+        var staff = client().staff();
+        checkInAll(staff, 7);
+
+        var q = queueState(staff);
+        assertThat(q.get("inRoomCount").intValue()).isEqualTo(5);
+        assertThat(q.get("waitingCount").intValue()).isEqualTo(2);
+
+        // Lưu phiếu kết quả cho người ở ghế 1: hoàn thành, rời phòng, người kế tiếp vào (BR.30)
+        String firstAppt = q.get("seats").get(0).get("appointmentId").stringValue();
+        staff.post("/api/staff/appointments/" + firstAppt + "/record",
+                body("diagnosis", "Đau vai gáy", "pulse", "78", "bloodPressure", "120/80", "doctorName", "BS. Minh")).expectStatus(201);
+        q = queueState(staff);
+        assertThat(q.get("inRoomCount").intValue()).isEqualTo(5);
+        assertThat(q.get("waitingCount").intValue()).isEqualTo(1);
+        assertThat(q.get("completedCount").intValue()).isEqualTo(1);
+        var done = staff.get("/api/staff/appointments/" + firstAppt).expectStatus(200).json();
+        assertThat(done.get("appointment").get("status").stringValue()).isEqualTo("COMPLETED");
     }
 
     @Test
@@ -281,9 +295,18 @@ class QueueTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 9")
     @DisplayName("sửa phiếu kết quả ghi lại lịch sử sửa (UC.9.9)")
     void suaPhieuKetQua() {
+        var staff = client().staff();
+        long a = todayAppointment("Người sửa phiếu");
+        staff.post("/api/staff/appointments/" + a + "/checkin", body()).expectStatus(200);
+        var created = staff.post("/api/staff/appointments/" + a + "/record", body("diagnosis", "Đau lưng")).expectStatus(201).json();
+        var updated = staff.put("/api/staff/records/" + created.get("record").get("id").stringValue(),
+                body("diagnosis", "Thoát vị đĩa đệm nhẹ")).expectStatus(200).json();
+        var history = updated.get("record").get("editHistory");
+        assertThat(history).hasSize(1);
+        assertThat(history.get(0).get("changes").get("diagnosis").get("from").stringValue()).isEqualTo("Đau lưng");
+        assertThat(history.get(0).get("changes").get("diagnosis").get("to").stringValue()).isEqualTo("Thoát vị đĩa đệm nhẹ");
     }
 
     @Test
@@ -333,9 +356,64 @@ class QueueTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 9")
     @DisplayName("phiếu kết quả chỉ sửa được trong 24 giờ sau khi xác nhận")
     void phieuKetQuaChiSuaTrong24Gio() {
+        var staff = client().staff();
+        long a = todayAppointment("Người quá hạn sửa");
+        staff.post("/api/staff/appointments/" + a + "/checkin", body()).expectStatus(200);
+        var created = staff.post("/api/staff/appointments/" + a + "/record", body("diagnosis", "Đau gối")).expectStatus(201).json();
+        String id = created.get("record").get("id").stringValue();
+        assertThat(created.get("record").get("editableUntil").stringValue()).isNotEmpty();
+        jdbc.update("UPDATE medical_records SET created_at = ? WHERE id = ?",
+                java.time.LocalDateTime.ofInstant(Instant.now().minusSeconds(25 * 3600), java.time.ZoneOffset.UTC), Long.parseLong(id));
+        staff.put("/api/staff/records/" + id, body("diagnosis", "Thoái hoá khớp gối")).expectStatus(403);
+
+        var list = staff.get("/api/staff/patients?q=" + java.net.URLEncoder.encode("Người quá hạn sửa", java.nio.charset.StandardCharsets.UTF_8))
+                .expectStatus(200).json();
+        assertThat(list.get("items").get(0).get("lastVisitDate").stringValue()).isEqualTo(todayVn().toString());
+        var dates = staff.get("/api/staff/appointments/dates?month=" + todayVn().toString().substring(0, 7)).expectStatus(200).json();
+        assertThat(dates.get("dates").toString()).contains(todayVn().toString());
+    }
+
+    // ---------- Phiếu đã xong không bao giờ được xếp ghế lại ----------
+
+    private void insertCheckin(long appointmentId, String status, Integer seat) {
+        long patientId = jdbc.queryForObject("SELECT patient_id FROM appointments WHERE id = ?", Long.class, appointmentId);
+        jdbc.update("INSERT INTO checkins (appointment_id, patient_id, visit_date, check_in_time, priority_group, status, seat_no, created_at) "
+                + "VALUES (?, ?, ?, UTC_TIMESTAMP(3), 'NORMAL', ?, ?, UTC_TIMESTAMP(3))", appointmentId, patientId, todayVn(), status, seat);
+    }
+
+    @Test
+    @DisplayName("[java] phiếu đã hoàn thành mà check-in còn chờ thì không bao giờ được mời vào ghế")
+    void javaPhieuDaXongKhongDuocMoi() {
+        var staff = client().staff();
+        long a = todayAppointment("Người đã xong");
+        jdbc.update("UPDATE appointments SET status = 'COMPLETED' WHERE id = ?", a);
+        insertCheckin(a, "WAITING", null);
+
+        staff.post("/api/staff/appointments/" + a + "/enter", body()).expectStatus(409);
+        queue.fillSeats(todayVn());
+        assertThat(apptStatus(a)).isEqualTo("COMPLETED");
+        assertThat(checkinStatus(a)).isEqualTo("WAITING");
+        assertThat(jdbc.queryForObject("SELECT seat_no FROM checkins WHERE appointment_id = ?", Integer.class, a)).isNull();
+        var res = staff.post("/api/staff/queue/invite", body()).expectStatus(409).json();
+        assertThat(res.get("error").get("code").stringValue()).isEqualTo("ROOM_FULL");
+        assertThat(apptStatus(a)).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    @DisplayName("[java] phiếu đã hoàn thành mà check-in còn trong phòng thì hoàn tác vào khám bị từ chối, không đổi gì")
+    void javaPhieuDaXongKhongHoanTacDuoc() {
+        var staff = client().staff();
+        long a = todayAppointment("Người đã xong trong phòng");
+        jdbc.update("UPDATE appointments SET status = 'COMPLETED' WHERE id = ?", a);
+        insertCheckin(a, "IN_ROOM", 1);
+
+        var res = staff.post("/api/staff/appointments/" + a + "/undo-enter", body()).expectStatus(409).json();
+        assertThat(res.get("error").get("code").stringValue()).isEqualTo("STALE");
+        assertThat(apptStatus(a)).isEqualTo("COMPLETED");
+        assertThat(checkinStatus(a)).isEqualTo("IN_ROOM");
+        assertThat(jdbc.queryForObject("SELECT seat_no FROM checkins WHERE appointment_id = ?", Integer.class, a)).isEqualTo(1);
     }
 
     // ---------- Mời vào khám (UC.10.2) ----------

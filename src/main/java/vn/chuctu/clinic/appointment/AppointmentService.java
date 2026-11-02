@@ -35,6 +35,7 @@ import vn.chuctu.clinic.patient.Patient;
 import vn.chuctu.clinic.patient.PatientRepository;
 import vn.chuctu.clinic.patient.PatientService;
 import vn.chuctu.clinic.queue.QueueService;
+import vn.chuctu.clinic.record.MedicalRecordRepository;
 
 /**
  * Đặt lịch, huỷ, đổi giờ và xem phiếu khám (services/appointment.service.js). Mỗi thao tác ghi chạy trong một giao dịch
@@ -70,10 +71,13 @@ public class AppointmentService {
     private final Clock clock;
     /** QueueService không phụ thuộc ngược vào AppointmentService nên không có vòng bean, không cần @Lazy. */
     private final QueueService queue;
+    private final MedicalRecordRepository medicalRecords;
 
     public AppointmentService(AppointmentRepository appointments, PatientRepository patients, SlotService slots, Counters counters,
-            JdbcTemplate jdbc, PlatformTransactionManager transactionManager, Clock clock, QueueService queue) {
+            JdbcTemplate jdbc, PlatformTransactionManager transactionManager, Clock clock, QueueService queue,
+            MedicalRecordRepository medicalRecords) {
         this.queue = queue;
+        this.medicalRecords = medicalRecords;
         this.appointments = appointments;
         this.patients = patients;
         this.slots = slots;
@@ -343,16 +347,9 @@ public class AppointmentService {
         return out;
     }
 
-    /** Các phiếu đã có bệnh án. Bảng medical_records do Task 9 quản lý nên ở đây chỉ đọc cột appointment_id. */
+    /** Các phiếu đã có bệnh án (cờ hasResult). */
     private Set<Long> appointmentsWithResult(Collection<Long> appointmentIds) {
-        Set<Long> out = new HashSet<>();
-        if (appointmentIds.isEmpty()) return out;
-        String marks = String.join(",", appointmentIds.stream().map(id -> "?").toList());
-        jdbc.query("SELECT appointment_id FROM medical_records WHERE appointment_id IN (" + marks + ")",
-                rs -> {
-                    out.add(rs.getLong(1));
-                }, appointmentIds.toArray());
-        return out;
+        return appointmentIds.isEmpty() ? Set.of() : Set.copyOf(medicalRecords.appointmentIdsWithRecord(appointmentIds));
     }
 
     /** Phiếu khám của mọi hồ sơ thuộc tài khoản (BR.20). status: BOOKED (gồm cả đã check-in, đang khám), COMPLETED, CANCELLED. */

@@ -18,11 +18,12 @@ import vn.chuctu.clinic.account.User;
 import vn.chuctu.clinic.common.Body;
 import vn.chuctu.clinic.common.VnTime;
 import vn.chuctu.clinic.queue.QueueService;
+import vn.chuctu.clinic.record.RecordService;
 import vn.chuctu.clinic.security.CurrentUser;
 
 /**
  * Lịch trong ngày, đặt hộ, đổi giờ và huỷ tại quầy (UC.7.1, UC.7.2, UC.7.5 đến UC.7.7), phần phiếu khám của
- * routes/staff.routes.js. Check-in và vào phòng nằm ở QueueController; bệnh án (Task 9) nối vào chỗ ghi chú bên dưới.
+ * routes/staff.routes.js. Check-in và vào phòng nằm ở QueueController, lập và sửa bệnh án ở StaffRecordController.
  */
 @RestController
 @RequestMapping("/api/staff")
@@ -31,11 +32,13 @@ public class StaffAppointmentController {
     private final AppointmentService appointments;
     private final SlotService slots;
     private final QueueService queue;
+    private final RecordService records;
     private final CurrentUser currentUser;
     private final Clock clock;
 
-    public StaffAppointmentController(AppointmentService appointments, SlotService slots, QueueService queue, CurrentUser currentUser,
-            Clock clock) {
+    public StaffAppointmentController(AppointmentService appointments, SlotService slots, QueueService queue, RecordService records,
+            CurrentUser currentUser, Clock clock) {
+        this.records = records;
         this.appointments = appointments;
         this.queue = queue;
         this.slots = slots;
@@ -79,8 +82,7 @@ public class StaffAppointmentController {
     Map<String, Object> get(@PathVariable long id) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("appointment", appointments.getStaffAppointment(id));
-        // Task 9: bệnh án của phiếu (records.getRecordByAppointment); đến lúc đó chưa có bệnh án nào
-        out.put("record", null);
+        out.put("record", records.getRecordByAppointment(id));
         return out;
     }
 

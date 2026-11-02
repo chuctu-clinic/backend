@@ -65,10 +65,19 @@ public final class Body {
     private final Map<String, String> errors = new LinkedHashMap<>();
     /** zod bỏ qua refine của cả object khi có ô lỗi kiểu (thiếu, sai kiểu, sai enum); lỗi chuỗi hay số thì vẫn chạy refine. */
     private boolean aborted;
+    /** Body lồng trong ô của một body khác: lỗi ghi vào body cha với khoá có tiền tố (ví dụ treatmentNotes.other). */
+    private final Body parent;
+    private final String prefix;
 
     private Body(JsonNode root, boolean objectBody) {
+        this(root, objectBody, null, "");
+    }
+
+    private Body(JsonNode root, boolean objectBody, Body parent, String prefix) {
         this.root = root;
         this.objectBody = objectBody;
+        this.parent = parent;
+        this.prefix = prefix;
     }
 
     /** null (không có body) coi như object rỗng, giống express.json. */
@@ -81,13 +90,29 @@ public final class Body {
 
     /** Ghi lỗi cho một ô nếu ô đó chưa có lỗi. */
     public void fail(String field, String message) {
-        errors.putIfAbsent(field, message);
+        if (parent != null) parent.fail(prefix + field, message);
+        else errors.putIfAbsent(field, message);
     }
 
     /** Như {@link #fail} cho lỗi kiểu (thiếu, sai kiểu, sai enum): zod coi ô đó là hỏng hẳn và không chạy refine của object. */
     public void abort(String field, String message) {
         aborted = true;
-        fail(field, message);
+        if (parent != null) parent.abort(prefix + field, message);
+        else fail(field, message);
+    }
+
+    /**
+     * Ô là một object con (z.object({...}).optional()): trả về body con để đọc từng ô bên trong, lỗi của ô con ghi vào body này
+     * với khoá {@code field.con}. Không gửi hoặc gửi null/sai kiểu: trả null (gửi null hoặc sai kiểu thì ghi lỗi ở chính ô).
+     */
+    public Body object(String field) {
+        JsonNode node = field(field);
+        if (node == null) return null;
+        if (!node.isObject()) {
+            abort(field, "Expected object, received " + typeName(node));
+            return null;
+        }
+        return new Body(node, true, this, field + ".");
     }
 
     /** Có ô nào hỏng hẳn chưa (xem {@link #abort}). */

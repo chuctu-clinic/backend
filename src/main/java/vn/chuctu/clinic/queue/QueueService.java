@@ -48,8 +48,9 @@ import vn.chuctu.clinic.patient.PatientRepository;
  * <p>Một ghế không bao giờ có hai người nhờ ràng buộc UNIQUE (visit_date, in_room_seat_no) của cột sinh tự động. Mỗi lần thử
  * một ghế ({@link #seatOne}) chạy trong giao dịch riêng, để lỗi trùng khoá chỉ quay lui lần thử đó chứ không làm hỏng
  * giao dịch hay session của nơi gọi. Vì vậy {@link #fillSeats}, {@link #inviteNext}, {@link #enterRoom} và
- * {@link #completeCheckin} phải được gọi ngoài giao dịch (sau khi giao dịch trước đó đã commit): giao dịch riêng không
- * thấy thay đổi chưa commit của nơi gọi.
+ * {@link #completeCheckin} và {@link #fillAfterCompletion} phải được gọi ngoài giao dịch (sau khi giao dịch trước đó đã commit):
+ * giao dịch riêng không thấy thay đổi chưa commit của nơi gọi. Riêng {@link #markCheckinCompleted} chỉ là một câu UPDATE và
+ * chạy trong giao dịch của nơi gọi.
  *
  * <p>Thứ tự khoá cố định là phiếu khám trước, check-in sau (cùng thứ tự với huỷ phiếu). Gặp deadlock thì làm lại.
  */
@@ -255,8 +256,14 @@ public class QueueService {
             if (seat == null) return Seating.FULL;
             try {
                 Boolean seated = tx.execute(status -> {
-                    jdbc.update("UPDATE appointments SET status = 'IN_PROGRESS', updated_at = ? WHERE id = ? AND status = 'CHECKED_IN'",
+                    int appointmentMoved = jdbc.update(
+                            "UPDATE appointments SET status = 'IN_PROGRESS', updated_at = ? WHERE id = ? AND status = 'CHECKED_IN'",
                             utc(clock.instant()), checkin.getAppointmentId());
+                    // Phiếu không còn ở trạng thái đã check-in (đã hoàn thành, huỷ, hoàn tác...): không được xếp ghế cho phiếu đó
+                    if (appointmentMoved != 1) {
+                        status.setRollbackOnly();
+                        return false;
+                    }
                     int changed = jdbc.update("UPDATE checkins SET status = 'IN_ROOM', seat_no = ?, entered_at = ? WHERE id = ? AND status = 'WAITING'",
                             seat, utc(now), checkin.getId());
                     if (changed != 1) {
@@ -337,8 +344,10 @@ public class QueueService {
     public void undoEnter(long checkinId) {
         Checkin checkin = checkins.findById(checkinId).filter(c -> "IN_ROOM".equals(c.getStatus())).orElseThrow(QueueService::notInRoom);
         inTransaction(() -> {
-            jdbc.update("UPDATE appointments SET status = 'CHECKED_IN', updated_at = ? WHERE id = ? AND status = 'IN_PROGRESS'",
+            int appointmentMoved = jdbc.update("UPDATE appointments SET status = 'CHECKED_IN', updated_at = ? WHERE id = ? AND status = 'IN_PROGRESS'",
                     utc(clock.instant()), checkin.getAppointmentId());
+            // Phiếu không còn đang khám (đã hoàn thành...): quay lui, không đưa người đã xong về hàng chờ
+            if (appointmentMoved != 1) throw Errors.conflict(STALE_APPOINTMENT, "STALE");
             int changed = jdbc.update("UPDATE checkins SET status = 'WAITING', seat_no = NULL, entered_at = NULL WHERE id = ? AND status = 'IN_ROOM'",
                     checkinId);
             if (changed != 1) throw notInRoom();
@@ -349,15 +358,28 @@ public class QueueService {
     }
 
     /**
-     * Sau khi lưu phiếu kết quả: rời hàng đợi và mời người kế tiếp (BR.30). Trả về false nếu check-in không còn ở trong phòng.
-     * Phải gọi sau khi giao dịch lưu phiếu đã commit (xem mô tả lớp).
+     * Rời hàng đợi khi lưu phiếu kết quả (BR.30): check-in IN_ROOM thành COMPLETED và nhả ghế. Chỉ là một câu UPDATE, chạy trong
+     * giao dịch của nơi gọi (lưu bệnh án, đổi phiếu khám sang COMPLETED và câu này cùng thành công hoặc cùng quay lui).
+     * Trả về false nếu check-in không còn ở trong phòng. Sau khi giao dịch commit, nơi gọi gọi {@link #fillAfterCompletion}.
+     */
+    public boolean markCheckinCompleted(long checkinId, Instant now) {
+        return jdbc.update("UPDATE checkins SET status = 'COMPLETED', completed_at = ?, seat_no = NULL WHERE id = ? AND status = 'IN_ROOM'",
+                utc(now), checkinId) == 1;
+    }
+
+    /** Mời người kế tiếp vào ghế vừa trống nếu tự động mời đang bật. Phải gọi ngoài giao dịch, sau khi giao dịch hoàn thành đã commit. */
+    public void fillAfterCompletion(LocalDate visitDate) {
+        if (getAutoInvite()) fillSeats(visitDate, List.of(), clock.instant());
+    }
+
+    /**
+     * Hoàn thành một check-in rồi mời người kế tiếp (completeCheckin của Node), mỗi bước tự thành công riêng. Trả về false
+     * nếu check-in không còn ở trong phòng. Việc lưu bệnh án không dùng hàm này mà gọi hai bước trên tách rời quanh giao dịch.
      */
     public boolean completeCheckin(long checkinId, Instant now) {
         Checkin checkin = checkins.findById(checkinId).orElse(null);
-        int changed = jdbc.update("UPDATE checkins SET status = 'COMPLETED', completed_at = ?, seat_no = NULL WHERE id = ? AND status = 'IN_ROOM'",
-                utc(now), checkinId);
-        if (changed != 1) return false;
-        if (checkin != null && getAutoInvite()) fillSeats(checkin.getVisitDate(), List.of(), clock.instant());
+        if (!markCheckinCompleted(checkinId, now)) return false;
+        if (checkin != null) fillAfterCompletion(checkin.getVisitDate());
         return true;
     }
 

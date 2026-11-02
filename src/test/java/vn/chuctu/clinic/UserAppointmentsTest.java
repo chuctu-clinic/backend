@@ -10,7 +10,6 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -58,10 +57,26 @@ class UserAppointmentsTest extends IntegrationTest {
     }
 
     @Test
-    @Disabled("Task 9")
     @DisplayName("đánh dấu phiếu đã có kết quả khám")
     void danhDauPhieuCoKetQua() {
-        // Node: tiếp tân check-in (Task 8) rồi lưu bệnh án (Task 9). Bản [java] bên dưới chèn bệnh án thẳng vào database.
+        var staff = client().staff();
+        var user = client().registerUser();
+        String patientId = user.selfPatientId();
+        Long staffId = jdbc.queryForObject("SELECT id FROM users WHERE role = 'RECEPTIONIST'", Long.class);
+        Long userId = jdbc.queryForObject("SELECT user_id FROM patients WHERE id = ?", Long.class, Long.parseLong(patientId));
+        java.time.LocalDate date = vn.chuctu.clinic.common.VnTime.today(java.time.Instant.now());
+        jdbc.update("INSERT INTO appointments (ticket_code, user_id, patient_id, service_type, slot_date, slot_start, expected_time, source, "
+                + "created_by, created_at, updated_at) VALUES ('CT-PK-U-1', ?, ?, 'CHAM_CUU', ?, '08:00', ?, 'ONLINE', ?, UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))",
+                userId, Long.parseLong(patientId), date,
+                java.sql.Timestamp.from(vn.chuctu.clinic.common.VnTime.slotInstant(date, "08:00")), staffId);
+        long apptId = jdbc.queryForObject("SELECT id FROM appointments WHERE ticket_code = 'CT-PK-U-1'", Long.class);
+        staff.post("/api/staff/appointments/" + apptId + "/checkin", body()).expectStatus(200);
+
+        assertThat(hasResult(user)).isFalse();
+        staff.post("/api/staff/appointments/" + apptId + "/record", body("diagnosis", "Đau vai")).expectStatus(201);
+        assertThat(hasResult(user)).isTrue();
+        assertThat(user.get("/api/me/appointments/" + apptId).expectStatus(200).json().get("appointment").get("hasResult").booleanValue())
+                .isTrue();
     }
 
     @Test
