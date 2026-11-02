@@ -147,7 +147,7 @@ class SessionTest extends IntegrationTest {
         prod.clearSession(response);
         prod.setDeviceCookie(response, "abc");
         List<String> cookies = response.getHeaders("Set-Cookie");
-        assertThat(cookies).hasSize(4).allSatisfy(c -> assertThat(c).contains("SameSite=None", "Secure", "HttpOnly", "Path=/"));
+        assertThat(cookies).hasSize(3).allSatisfy(c -> assertThat(c).contains("SameSite=None", "Secure", "HttpOnly", "Path=/"));
     }
 
     @Test
@@ -195,13 +195,26 @@ class SessionTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("[java] cookie phiên nội bộ cũ ct_staff được chuyển sang ct_session")
-    void cookieNoiBoCuDuocChuyen() {
-        User staff = createUser("RECEPTIONIST");
-        String token = tokenOf(staff);
-        var res = client().cookie("ct_staff", token).get("/api/staff/_probe").expectStatus(200);
-        List<String> cookies = res.headers().allValues("set-cookie");
-        assertThat(cookies).anySatisfy(c -> assertThat(c).startsWith("ct_session=" + token).contains("Max-Age=2592000"));
-        assertThat(cookies).anySatisfy(c -> assertThat(c).startsWith("ct_staff=;").contains("Max-Age=0"));
+    @DisplayName("[java] cookie ct_staff của bản cũ bị bỏ qua")
+    void cookieCtStaffBiBoQua() {
+        String token = tokenOf(createUser("RECEPTIONIST"));
+        var res = client().cookie("ct_staff", token).get("/api/staff/_probe").expectStatus(401);
+        assertThat(res.headers().allValues("set-cookie")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("[java] USER có mustChangePassword không bị chặn")
+    void userMustChangePasswordKhongBiChan() {
+        User user = createUser("USER");
+        user.setMustChangePassword(true);
+        users.save(user);
+        loginAs(user).get("/api/me/_probe").expectStatus(200);
+    }
+
+    @Test
+    @DisplayName("[java] /api/authx không được miễn x-session-user")
+    void authxKhongDuocMien() {
+        var res = client().header("x-session-user", "5").get("/api/authx/gi-do").expectStatus(409);
+        assertThat(res.json().get("error").get("code").stringValue()).isEqualTo("SESSION_CHANGED");
     }
 }

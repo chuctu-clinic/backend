@@ -2,6 +2,9 @@ package vn.chuctu.clinic;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import java.sql.SQLIntegrityConstraintViolationException;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -10,6 +13,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.ResponseEntity;
 import tools.jackson.databind.json.JsonMapper;
+import vn.chuctu.clinic.account.User;
 import vn.chuctu.clinic.common.GlobalExceptionHandler;
 
 class ErrorHandlerTest extends IntegrationTest {
@@ -56,11 +60,43 @@ class ErrorHandlerTest extends IntegrationTest {
     @Test
     @DisplayName("trùng khoá duy nhất trả về 409")
     void trungKhoa() {
-        for (Exception e : new Exception[] {new DuplicateKeyException("E11000"), new DataIntegrityViolationException("E11000")}) {
+        for (Exception e : new Exception[] {new DuplicateKeyException("E11000"), new DataIntegrityViolationException("E11000",
+                new SQLIntegrityConstraintViolationException("Duplicate entry", "23000", 1062))}) {
             var response = handle(e);
             assertThat(response.getStatusCode().value()).isEqualTo(409);
             assertThat(error(response)).containsEntry("code", "DUPLICATE").containsEntry("message", "Dữ liệu đã tồn tại.");
         }
+    }
+
+    @Test
+    @DisplayName("[java] chỉ khoá trùng thật (MySQL 1062) của DataIntegrityViolationException mới là 409")
+    void chiKhoaTrungThatLa409() {
+        var duplicate = new DataIntegrityViolationException("x", new SQLIntegrityConstraintViolationException("Duplicate entry", "23000", 1062));
+        assertThat(handle(duplicate).getStatusCode().value()).isEqualTo(409);
+        for (Exception other : new Exception[] {
+            new DataIntegrityViolationException("x", new SQLIntegrityConstraintViolationException("FK", "23000", 1452)),
+            new DataIntegrityViolationException("x")}) {
+            var response = handle(other);
+            assertThat(response.getStatusCode().value()).isEqualTo(500);
+            assertThat(error(response)).containsEntry("code", "SERVER_ERROR");
+        }
+    }
+
+    @Test
+    @DisplayName("[java] database thật: trùng số điện thoại là 409, giá trị quá dài là 500")
+    void databaseThat() {
+        User first = createUser("USER");
+        User dup = new User();
+        dup.setPhone(first.getPhone());
+        dup.setFullName("Trùng");
+        var duplicate = assertThrows(DataIntegrityViolationException.class, () -> users.saveAndFlush(dup));
+        assertThat(handle(duplicate).getStatusCode().value()).isEqualTo(409);
+
+        User tooLong = new User();
+        tooLong.setPhone("0".repeat(60));
+        tooLong.setFullName("Quá dài");
+        var invalid = assertThrows(Exception.class, () -> users.saveAndFlush(tooLong));
+        assertThat(handle(invalid).getStatusCode().value()).isEqualTo(500);
     }
 
     @Test

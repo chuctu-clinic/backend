@@ -90,9 +90,14 @@ public final class TestClient {
     }
 
     public Result send(String method, String path, String json) {
+        return send(method, path, json, "application/json");
+    }
+
+    /** contentType null: không gửi header Content-Type. */
+    public Result send(String method, String path, String json, String contentType) {
         HttpRequest.Builder request = HttpRequest.newBuilder(base.resolve(path));
         headers.forEach(request::header);
-        if (json != null) request.header("Content-Type", "application/json");
+        if (json != null && contentType != null) request.header("Content-Type", contentType);
         request.method(method, json == null ? HttpRequest.BodyPublishers.noBody()
                 : HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8));
         try {

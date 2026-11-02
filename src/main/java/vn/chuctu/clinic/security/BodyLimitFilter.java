@@ -11,6 +11,9 @@ import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.Collections;
+import java.util.Enumeration;
+import java.util.List;
 import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
 import tools.jackson.databind.JsonNode;
@@ -25,6 +28,7 @@ import vn.chuctu.clinic.common.Errors;
 public class BodyLimitFilter extends OncePerRequestFilter {
 
     static final int LIMIT_BYTES = 1024 * 1024;
+    private static final String RAW_BODY_PATH = "/api/admin/uploads";
 
     private final JsonMapper mapper;
     private final JsonErrorWriter errors;
@@ -38,7 +42,9 @@ public class BodyLimitFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         if (!isJson(request)) {
-            chain.doFilter(request, response);
+            // Như express.json: body không phải application/json bị bỏ qua, endpoint thấy {}. Ngoại lệ: tải ảnh lên
+            // nhận thẳng byte (express.raw ở route đó).
+            chain.doFilter(RAW_BODY_PATH.equals(request.getRequestURI()) ? request : new CachedBodyRequest(request, new byte[0], true), response);
             return;
         }
         if (request.getContentLengthLong() > LIMIT_BYTES) {
@@ -54,7 +60,7 @@ public class BodyLimitFilter extends OncePerRequestFilter {
             errors.write(response, Errors.badJson());
             return;
         }
-        chain.doFilter(new CachedBodyRequest(request, body), response);
+        chain.doFilter(new CachedBodyRequest(request, body, false), response);
     }
 
     private static boolean isJson(HttpServletRequest request) {
@@ -84,10 +90,35 @@ public class BodyLimitFilter extends OncePerRequestFilter {
 
     private static final class CachedBodyRequest extends HttpServletRequestWrapper {
         private final byte[] body;
+        private final boolean hideContentType;
 
-        CachedBodyRequest(HttpServletRequest request, byte[] body) {
+        CachedBodyRequest(HttpServletRequest request, byte[] body, boolean hideContentType) {
             super(request);
             this.body = body;
+            this.hideContentType = hideContentType;
+        }
+
+        @Override
+        public String getContentType() {
+            return hideContentType ? null : super.getContentType();
+        }
+
+        @Override
+        public String getHeader(String name) {
+            return hideContentType && "content-type".equalsIgnoreCase(name) ? null : super.getHeader(name);
+        }
+
+        @Override
+        public Enumeration<String> getHeaders(String name) {
+            return hideContentType && "content-type".equalsIgnoreCase(name) ? Collections.emptyEnumeration() : super.getHeaders(name);
+        }
+
+        @Override
+        public Enumeration<String> getHeaderNames() {
+            if (!hideContentType) return super.getHeaderNames();
+            List<String> names = Collections.list(super.getHeaderNames());
+            names.removeIf("content-type"::equalsIgnoreCase);
+            return Collections.enumeration(names);
         }
 
         @Override

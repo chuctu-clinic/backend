@@ -63,6 +63,53 @@ class ContractTest extends IntegrationTest {
         assertThat(client().post("/api/auth/_probe/login", ok).status()).isEqualTo(400);
     }
 
+    private static void assertPhoneRequired(TestClient.Result res) {
+        res.expectStatus(400);
+        assertThat(res.json().get("error").get("code").stringValue()).isEqualTo("VALIDATION");
+        assertThat(res.json().get("error").get("fields").get("phone").stringValue()).isEqualTo("Cô chú vui lòng nhập số điện thoại.");
+    }
+
+    @Test
+    @DisplayName("[java] body text/plain bị bỏ qua, endpoint thấy {}")
+    void bodyTextPlain() {
+        assertPhoneRequired(client().send("POST", "/api/auth/_probe/login", "{\"phone\":\"0912345678\"}", "text/plain"));
+    }
+
+    @Test
+    @DisplayName("[java] body form bị bỏ qua, endpoint thấy {}")
+    void bodyForm() {
+        assertPhoneRequired(client().send("POST", "/api/auth/_probe/login", "phone=0912345678", "application/x-www-form-urlencoded"));
+    }
+
+    @Test
+    @DisplayName("[java] không có Content-Type thì body bị bỏ qua")
+    void khongCoContentType() {
+        assertPhoneRequired(client().send("POST", "/api/auth/_probe/login", "{\"phone\":\"0912345678\"}", null));
+    }
+
+    @Test
+    @DisplayName("[java] application/json có charset vẫn được đọc")
+    void jsonCoCharset() {
+        client().send("POST", "/api/auth/_probe/login", "{\"phone\":\"0912345678\"}", "application/json; charset=utf-8")
+                .expectStatus(200);
+    }
+
+    @Test
+    @DisplayName("[java] application/x+json quá 1 MB không phải JSON nên bị bỏ qua, không lọt giới hạn")
+    void xPlusJsonQuaLon() {
+        String big = "{\"phone\":\"" + "x".repeat(1100 * 1024) + "\"}";
+        assertPhoneRequired(client().send("POST", "/api/auth/_probe/login", big, "application/x+json"));
+    }
+
+    @Test
+    @DisplayName("[java] Accept: text/plain không gây lỗi")
+    void acceptTextPlain() {
+        var ok = client().header("Accept", "text/plain").get("/api/auth/_probe").expectStatus(200);
+        assertThat(ok.headers().firstValue("content-type").orElse("")).startsWith("application/json");
+        client().header("Accept", "text/plain").get("/api/khong-co").expectStatus(404);
+        client().header("Accept", "image/png").send("POST", "/api/auth/_probe/login", "{}").expectStatus(400);
+    }
+
     @Test
     @DisplayName("[java] JSON gốc là chuỗi trả BAD_JSON như express.json strict")
     void jsonGocLaChuoi() {

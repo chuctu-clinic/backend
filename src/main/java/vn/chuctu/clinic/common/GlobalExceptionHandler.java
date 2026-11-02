@@ -2,6 +2,8 @@ package vn.chuctu.clinic.common;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.sql.SQLException;
+import org.springframework.core.NestedExceptionUtils;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.MediaType;
@@ -32,6 +34,10 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(api.status()).contentType(MediaType.APPLICATION_JSON).body(api.toBody());
     }
 
+    private static boolean isMysqlDuplicate(Exception e) {
+        return NestedExceptionUtils.getRootCause(e) instanceof SQLException sql && sql.getErrorCode() == 1062;
+    }
+
     private ApiException translate(Exception e) {
         if (e instanceof ApiException api) return api;
         if (e instanceof HttpMessageNotReadableException) return Errors.badJson();
@@ -42,8 +48,8 @@ public class GlobalExceptionHandler {
                 || e instanceof HttpRequestMethodNotSupportedException) {
             return Errors.notFound("Không tìm thấy đường dẫn.");
         }
-        // Mã 11000 của MongoDB
-        if (e instanceof DuplicateKeyException || e instanceof DataIntegrityViolationException) {
+        // Mã 11000 của MongoDB: chỉ khoá trùng thật (MySQL 1062); lỗi ràng buộc khác (khoá ngoại, NOT NULL, quá dài) là 500
+        if (e instanceof DuplicateKeyException || e instanceof DataIntegrityViolationException && isMysqlDuplicate(e)) {
             return Errors.conflict("Dữ liệu đã tồn tại.", "DUPLICATE");
         }
         if (!config.isTest) log.error("Lỗi không lường trước", e);

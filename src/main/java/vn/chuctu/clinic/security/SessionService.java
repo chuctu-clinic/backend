@@ -27,8 +27,6 @@ import vn.chuctu.clinic.common.Rules;
 public class SessionService {
 
     public static final String SESSION_COOKIE = "ct_session";
-    /** Cookie phiên nội bộ của bản trước (hai phiên riêng): còn thì chuyển sang ct_session. */
-    public static final String LEGACY_STAFF_COOKIE = "ct_staff";
     public static final String DEVICE_COOKIE = "ct_device";
 
     private static final Duration SESSION_MAX_AGE = Duration.ofDays(Rules.SESSION_DAYS);
@@ -53,18 +51,8 @@ public class SessionService {
         addCookie(response, cookie(SESSION_COOKIE, sign(user), remember ? SESSION_MAX_AGE : null));
     }
 
-    /** Cấp lại cookie phiên cho token cũ vừa chuyển từ cookie nội bộ của bản trước. */
-    void setSessionToken(HttpServletResponse response, String token) {
-        addCookie(response, cookie(SESSION_COOKIE, token, SESSION_MAX_AGE));
-    }
-
-    /** Xoá phiên, kể cả cookie phiên nội bộ cũ. */
     public void clearSession(HttpServletResponse response) {
-        for (String name : new String[] {SESSION_COOKIE, LEGACY_STAFF_COOKIE}) clearCookie(response, name);
-    }
-
-    void clearCookie(HttpServletResponse response, String name) {
-        addCookie(response, cookie(name, "", Duration.ZERO));
+        addCookie(response, cookie(SESSION_COOKIE, "", Duration.ZERO));
     }
 
     public void setDeviceCookie(HttpServletResponse response, String deviceId) {

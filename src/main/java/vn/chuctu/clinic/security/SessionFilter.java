@@ -8,6 +8,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -21,6 +23,8 @@ import vn.chuctu.clinic.common.Errors;
  * để tài khoản bị khoá hoặc đổi vai trò được áp dụng ngay ở yêu cầu kế tiếp (BR.32, BR.33).
  */
 public class SessionFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(SessionFilter.class);
 
     private final SessionService sessions;
     private final UserRepository users;
@@ -59,18 +63,15 @@ public class SessionFilter extends OncePerRequestFilter {
 
     private User readSession(HttpServletRequest request, HttpServletResponse response) {
         String token = cookie(request, SessionService.SESSION_COOKIE);
-        String legacy = cookie(request, SessionService.LEGACY_STAFF_COOKIE);
-        if (token != null && legacy != null) sessions.clearCookie(response, SessionService.LEGACY_STAFF_COOKIE);
-        // Phiên nội bộ của bản trước: chuyển sang cookie chung, khỏi phải đăng nhập lại
-        if (token == null && legacy != null) {
-            token = legacy;
-            sessions.setSessionToken(response, token);
-            sessions.clearCookie(response, SessionService.LEGACY_STAFF_COOKIE);
-        }
         if (token == null) return null;
-        Long id = sessions.verify(token);
-        Optional<User> user = id == null ? Optional.empty() : users.findById(id);
-        if (user.isPresent() && user.get().isActive()) return user.get();
+        try {
+            Long id = sessions.verify(token);
+            Optional<User> user = id == null ? Optional.empty() : users.findById(id);
+            if (user.isPresent() && user.get().isActive()) return user.get();
+        } catch (RuntimeException e) {
+            // Như Node: lỗi đọc database cũng coi là chưa đăng nhập và xoá cookie, không trả 500
+            log.error("Không đọc được phiên đăng nhập", e);
+        }
         sessions.clearSession(response);
         return null;
     }
