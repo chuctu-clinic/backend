@@ -14,6 +14,8 @@ import vn.chuctu.clinic.seed.DemoDatabase;
  */
 class DemoDatabaseTest extends IntegrationTest {
 
+    /** Đầu thông điệp từ chối của DemoDatabase; lỗi kết nối không chứa câu này. */
+    private static final String REFUSED = "Chế độ demo chỉ dùng database";
     private static final String NOWHERE = "jdbc:mysql://127.0.0.1:1/";
 
     @Test
@@ -21,12 +23,12 @@ class DemoDatabaseTest extends IntegrationTest {
     void demo_chi_dung_den_chuctu_demo() {
         for (String name : new String[] {"chuctu", "chuctu_test", "chuctu_demo2", "Chuctu_Demo", "CHUCTU_DEMO", "mysql"}) {
             assertThatThrownBy(() -> DemoDatabase.prepare(NOWHERE + name, "u", "p", false))
-                    .as(name).isInstanceOf(IllegalStateException.class).hasMessageContaining("chuctu_demo");
+                    .as(name).isInstanceOf(IllegalStateException.class).hasMessageContaining(REFUSED);
         }
         assertThatThrownBy(() -> DemoDatabase.prepare("jdbc:mysql://127.0.0.1:1", "u", "p", false))
-                .isInstanceOf(IllegalStateException.class).hasMessageContaining("chuctu_demo");
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining(REFUSED);
         assertThatThrownBy(() -> DemoDatabase.prepare(null, "u", "p", false))
-                .isInstanceOf(IllegalStateException.class).hasMessageContaining("chuctu_demo");
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining(REFUSED);
     }
 
     @Test
