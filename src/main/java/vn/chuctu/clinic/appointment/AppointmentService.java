@@ -1,14 +1,11 @@
 package vn.chuctu.clinic.appointment;
 
-import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -21,15 +18,14 @@ import java.util.function.Supplier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
 import vn.chuctu.clinic.account.User;
 import vn.chuctu.clinic.common.Body;
 import vn.chuctu.clinic.common.Constants;
 import vn.chuctu.clinic.common.Counters;
 import vn.chuctu.clinic.common.Errors;
 import vn.chuctu.clinic.common.Likes;
+import vn.chuctu.clinic.common.Tx;
 import vn.chuctu.clinic.common.VnTime;
 import vn.chuctu.clinic.patient.Patient;
 import vn.chuctu.clinic.patient.PatientRepository;
@@ -50,8 +46,6 @@ public class AppointmentService {
     public static final String NO_SHOW_REASON =
             "Không đến khám (hệ thống tự huỷ lúc " + Constants.RECEIVING_HOURS.noShowCancel().replaceFirst("^0", "") + ")";
 
-    private static final int MAX_ATTEMPTS = 3;
-    private static final int MYSQL_DEADLOCK = 1213;
     private static final int LIST_LIMIT = 200;
     private static final String ACTIVE_LIST = "'" + String.join("','", Constants.ACTIVE_STATUSES) + "'";
     private static final DateTimeFormatter DMY = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -67,7 +61,7 @@ public class AppointmentService {
     private final SlotService slots;
     private final Counters counters;
     private final JdbcTemplate jdbc;
-    private final TransactionTemplate tx;
+    private final Tx tx;
     private final Clock clock;
     /** QueueService không phụ thuộc ngược vào AppointmentService nên không có vòng bean, không cần @Lazy. */
     private final QueueService queue;
@@ -83,9 +77,7 @@ public class AppointmentService {
         this.slots = slots;
         this.counters = counters;
         this.jdbc = jdbc;
-        this.tx = new TransactionTemplate(transactionManager);
-        // Luôn mở giao dịch mới: nếu một ngày nào đó có nơi gọi đang trong giao dịch, vòng thử lại vẫn làm lại được từ đầu
-        this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.tx = new Tx(transactionManager);
         this.clock = clock;
     }
 
@@ -93,30 +85,6 @@ public class AppointmentService {
     public static String userStatus(String status) {
         if ("COMPLETED".equals(status) || "CANCELLED".equals(status)) return status;
         return "BOOKED";
-    }
-
-    // ---------- Giao dịch có thử lại ----------
-
-    /** Chạy trong một giao dịch mới, làm lại khi MySQL báo deadlock. */
-    private <T> T inTransaction(Supplier<T> work) {
-        for (int attempt = 1;; attempt++) {
-            try {
-                return tx.execute(status -> work.get());
-            } catch (RuntimeException e) {
-                if (attempt >= MAX_ATTEMPTS || !isDeadlock(e)) throw e;
-            }
-        }
-    }
-
-    private static boolean isDeadlock(Throwable error) {
-        for (Throwable t = error; t != null; t = t.getCause() == t ? null : t.getCause()) {
-            if (t instanceof SQLException sql && sql.getErrorCode() == MYSQL_DEADLOCK) return true;
-        }
-        return false;
-    }
-
-    private static LocalDateTime utc(Instant instant) {
-        return LocalDateTime.ofInstant(instant.truncatedTo(ChronoUnit.MILLIS), ZoneOffset.UTC);
     }
 
     // ---------- Tạo phiếu ----------
@@ -163,7 +131,7 @@ public class AppointmentService {
 
     /** Người dùng đặt lịch cho hồ sơ thuộc tài khoản của mình (UC.6.3). */
     public Appointment userBook(User user, BookingRequest req) {
-        return inTransaction(() -> {
+        return tx.run(() -> {
             Patient patient = patients.findByIdAndUserId(req.patientId(), user.getId())
                     .orElseThrow(() -> Errors.notFound("Không tìm thấy hồ sơ người đi khám."));
             if (patient.getRelationship() == null || patient.getRelationship().isEmpty()) {
@@ -187,7 +155,7 @@ public class AppointmentService {
 
     /** Tiếp tân đặt hộ tại quầy (UC.7.5). */
     public Appointment counterBook(User staff, BookingRequest req) {
-        return inTransaction(() -> {
+        return tx.run(() -> {
             Patient patient = patients.findById(req.patientId()).orElseThrow(() -> Errors.notFound("Không tìm thấy hồ sơ bệnh nhân."));
             return createAppointment(patient, req.serviceType(), req.slotDate(), req.slotStart(), "COUNTER", patient.getUserId(),
                     staff.getId(), null, SlotService.COUNTER);
@@ -207,7 +175,7 @@ public class AppointmentService {
     private void cancelInternal(Appointment appt, User by, String reason) {
         if ("COMPLETED".equals(appt.getStatus())) throw Errors.conflict("Phiếu khám đã hoàn thành nên không huỷ được.", "NOT_CANCELLABLE");
         if ("CANCELLED".equals(appt.getStatus())) throw Errors.conflict("Phiếu khám này đã được huỷ trước đó.", "NOT_CANCELLABLE");
-        LocalDateTime now = utc(clock.instant());
+        LocalDateTime now = Tx.utc(clock.instant());
         int changed = jdbc.update("UPDATE appointments SET status = 'CANCELLED', cancel_reason = ?, cancelled_by = ?, cancelled_at = ?, "
                 + "updated_at = ? WHERE id = ? AND status IN (" + ACTIVE_LIST + ")", isBlank(reason) ? null : reason, by.getId(), now, now,
                 appt.getId());
@@ -231,9 +199,9 @@ public class AppointmentService {
             long id = ((Number) row.get("id")).longValue();
             LocalDate date = ((java.sql.Date) row.get("slot_date")).toLocalDate();
             String start = (String) row.get("slot_start");
-            boolean changed = inTransaction(() -> {
+            boolean changed = tx.run(() -> {
                 int n = jdbc.update("UPDATE appointments SET status = 'CANCELLED', cancel_reason = ?, cancelled_by = NULL, cancelled_at = ?, "
-                        + "updated_at = ? WHERE id = ? AND status = 'BOOKED'", NO_SHOW_REASON, utc(now), utc(clock.instant()), id);
+                        + "updated_at = ? WHERE id = ? AND status = 'BOOKED'", NO_SHOW_REASON, Tx.utc(now), Tx.utc(clock.instant()), id);
                 if (n == 1) slots.release(date, start);
                 return n == 1;
             });
@@ -243,7 +211,7 @@ public class AppointmentService {
     }
 
     public void userCancel(User user, long appointmentId, String reason) {
-        inTransaction(() -> {
+        tx.run(() -> {
             Appointment appt = appointments.findByIdAndUserId(appointmentId, user.getId())
                     .orElseThrow(() -> Errors.notFound("Không tìm thấy phiếu khám."));
             cancelInternal(appt, user, reason);
@@ -255,7 +223,7 @@ public class AppointmentService {
         if (isBlank(reason)) {
             throw Errors.badRequest("Vui lòng chọn lý do huỷ.", Map.of("fields", Map.of("reason", "Vui lòng chọn lý do huỷ.")), "BAD_REQUEST");
         }
-        inTransaction(() -> {
+        tx.run(() -> {
             Appointment appt = appointments.findById(appointmentId).orElseThrow(() -> Errors.notFound("Không tìm thấy phiếu khám."));
             cancelInternal(appt, staff, reason);
             return null;
@@ -264,7 +232,7 @@ public class AppointmentService {
 
     /** Đổi giờ tính như đặt mới vào khung mới: phiếu cũ huỷ, phiếu mới ghi rescheduledFromId (BR.26). Trả về phiếu mới. */
     public Appointment reschedule(User staff, long appointmentId, LocalDate date, String start) {
-        return inTransaction(() -> {
+        return tx.run(() -> {
             Appointment old = appointments.findById(appointmentId).orElseThrow(() -> Errors.notFound("Không tìm thấy phiếu khám."));
             if (!"BOOKED".equals(old.getStatus())) throw Errors.conflict("Chỉ đổi giờ được phiếu chưa check-in.", "NOT_RESCHEDULABLE");
             if (old.getSlotDate().equals(date) && old.getSlotStart().equals(start)) {

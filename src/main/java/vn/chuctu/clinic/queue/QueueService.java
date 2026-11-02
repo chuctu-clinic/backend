@@ -1,14 +1,11 @@
 package vn.chuctu.clinic.queue;
 
 import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -18,15 +15,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Supplier;
-import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.support.TransactionTemplate;
 import vn.chuctu.clinic.account.User;
 import vn.chuctu.clinic.appointment.Appointment;
 import vn.chuctu.clinic.appointment.AppointmentRepository;
@@ -34,6 +27,7 @@ import vn.chuctu.clinic.common.BusinessClock;
 import vn.chuctu.clinic.common.Constants;
 import vn.chuctu.clinic.common.Errors;
 import vn.chuctu.clinic.common.Rules;
+import vn.chuctu.clinic.common.Tx;
 import vn.chuctu.clinic.common.VnTime;
 import vn.chuctu.clinic.patient.Patient;
 import vn.chuctu.clinic.patient.PatientRepository;
@@ -42,13 +36,13 @@ import vn.chuctu.clinic.patient.PatientRepository;
  * Check-in, hàng đợi và mời vào khám (services/queue.service.js).
  *
  * <p>Đồng hồ: {@link #checkIn}, {@link #isReceivingTime} và {@link #assertReceivingTime} dùng {@link BusinessClock} (chỗ Node
- * dùng clock.now); {@link #inviteNext}, {@link #enterRoom}, {@link #fillSeats}, {@link #completeCheckin} và các giờ ghi
+ * dùng clock.now); {@link #inviteNext}, {@link #enterRoom}, {@link #fillSeats}, {@link #markCheckinCompleted} và các giờ ghi
  * vào database dùng {@link Clock} (chỗ Node dùng new Date()).
  *
  * <p>Một ghế không bao giờ có hai người nhờ ràng buộc UNIQUE (visit_date, in_room_seat_no) của cột sinh tự động. Mỗi lần thử
  * một ghế ({@link #seatOne}) chạy trong giao dịch riêng, để lỗi trùng khoá chỉ quay lui lần thử đó chứ không làm hỏng
  * giao dịch hay session của nơi gọi. Vì vậy {@link #fillSeats}, {@link #inviteNext}, {@link #enterRoom} và
- * {@link #completeCheckin} và {@link #fillAfterCompletion} phải được gọi ngoài giao dịch (sau khi giao dịch trước đó đã commit):
+ * {@link #fillAfterCompletion} phải được gọi ngoài giao dịch (sau khi giao dịch trước đó đã commit):
  * giao dịch riêng không thấy thay đổi chưa commit của nơi gọi. Riêng {@link #markCheckinCompleted} chỉ là một câu UPDATE và
  * chạy trong giao dịch của nơi gọi.
  *
@@ -60,8 +54,6 @@ public class QueueService {
     public static final String AUTO_KEY = "queue.autoInvite";
 
     private static final int SEATS = Rules.QUEUE_SEATS;
-    private static final int MAX_ATTEMPTS = 3;
-    private static final int MYSQL_DEADLOCK = 1213;
     private static final List<String> LIVE = List.of("WAITING", "IN_ROOM", "COMPLETED");
     private static final String STALE_APPOINTMENT = "Phiếu khám vừa thay đổi trạng thái, vui lòng tải lại.";
 
@@ -73,7 +65,7 @@ public class QueueService {
     private final PatientRepository patients;
     private final Settings settings;
     private final JdbcTemplate jdbc;
-    private final TransactionTemplate tx;
+    private final Tx tx;
     private final Clock clock;
     private final BusinessClock businessClock;
 
@@ -84,8 +76,7 @@ public class QueueService {
         this.patients = patients;
         this.settings = settings;
         this.jdbc = jdbc;
-        this.tx = new TransactionTemplate(transactionManager);
-        this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.tx = new Tx(transactionManager);
         this.clock = clock;
         this.businessClock = businessClock;
     }
@@ -99,29 +90,6 @@ public class QueueService {
     }
 
     // ---------- Tiện ích ----------
-
-    private static LocalDateTime utc(Instant instant) {
-        return LocalDateTime.ofInstant(instant.truncatedTo(ChronoUnit.MILLIS), ZoneOffset.UTC);
-    }
-
-    private static boolean isDeadlock(Throwable error) {
-        for (Throwable t = error; t != null; t = t.getCause() == t ? null : t.getCause()) {
-            if (t instanceof ConcurrencyFailureException) return true;
-            if (t instanceof SQLException sql && sql.getErrorCode() == MYSQL_DEADLOCK) return true;
-        }
-        return false;
-    }
-
-    /** Một giao dịch mới, làm lại khi MySQL báo deadlock. Không gọi từ trong giao dịch khác. */
-    private <T> T inTransaction(Supplier<T> work) {
-        for (int attempt = 1;; attempt++) {
-            try {
-                return tx.execute(status -> work.get());
-            } catch (RuntimeException e) {
-                if (attempt >= MAX_ATTEMPTS || !isDeadlock(e)) throw e;
-            }
-        }
-    }
 
     // ---------- Nhóm ưu tiên ----------
 
@@ -177,9 +145,9 @@ public class QueueService {
         if (patient != null && patient.isLocked()) throw Errors.forbidden("Hồ sơ đang bị khoá nên không ghi nhận lượt khám mới.");
 
         String group = priorityGroupFor(appt.getSlotDate(), appt.getSlotStart(), appt.getSource(), appt.getCreatedAt(), now);
-        long checkinId = inTransaction(() -> {
+        long checkinId = tx.run(() -> {
             int changed = jdbc.update("UPDATE appointments SET status = 'CHECKED_IN', updated_at = ? WHERE id = ? AND status = 'BOOKED'",
-                    utc(clock.instant()), appt.getId());
+                    Tx.utc(clock.instant()), appt.getId());
             if (changed != 1) throw Errors.conflict(STALE_APPOINTMENT, "STALE");
             var keys = new GeneratedKeyHolder();
             jdbc.update(con -> {
@@ -188,9 +156,9 @@ public class QueueService {
                 ps.setLong(1, appt.getId());
                 ps.setLong(2, appt.getPatientId());
                 ps.setObject(3, today);
-                ps.setObject(4, utc(now));
+                ps.setObject(4, Tx.utc(now));
                 ps.setString(5, group);
-                ps.setObject(6, utc(clock.instant()));
+                ps.setObject(6, Tx.utc(clock.instant()));
                 return ps;
             }, keys);
             return keys.getKey().longValue();
@@ -206,9 +174,9 @@ public class QueueService {
         if ("IN_ROOM".equals(checkin.getStatus())) {
             throw Errors.conflict("Bệnh nhân đã vào khám. Hoàn tác vào khám trước.", "IN_ROOM");
         }
-        inTransaction(() -> {
+        tx.run(() -> {
             jdbc.update("UPDATE appointments SET status = 'BOOKED', updated_at = ? WHERE id = ? AND status = 'CHECKED_IN'",
-                    utc(clock.instant()), appointmentId);
+                    Tx.utc(clock.instant()), appointmentId);
             int reverted = jdbc.update("UPDATE checkins SET status = 'REVERTED' WHERE id = ? AND status = 'WAITING'", checkin.getId());
             if (reverted != 1) throw Errors.conflict("Hàng đợi vừa thay đổi, vui lòng tải lại.", "STALE");
             return null;
@@ -255,17 +223,17 @@ public class QueueService {
             Integer seat = lowestFreeSeat(date);
             if (seat == null) return Seating.FULL;
             try {
-                Boolean seated = tx.execute(status -> {
+                Boolean seated = tx.once(status -> {
                     int appointmentMoved = jdbc.update(
                             "UPDATE appointments SET status = 'IN_PROGRESS', updated_at = ? WHERE id = ? AND status = 'CHECKED_IN'",
-                            utc(clock.instant()), checkin.getAppointmentId());
+                            Tx.utc(clock.instant()), checkin.getAppointmentId());
                     // Phiếu không còn ở trạng thái đã check-in (đã hoàn thành, huỷ, hoàn tác...): không được xếp ghế cho phiếu đó
                     if (appointmentMoved != 1) {
                         status.setRollbackOnly();
                         return false;
                     }
                     int changed = jdbc.update("UPDATE checkins SET status = 'IN_ROOM', seat_no = ?, entered_at = ? WHERE id = ? AND status = 'WAITING'",
-                            seat, utc(now), checkin.getId());
+                            seat, Tx.utc(now), checkin.getId());
                     if (changed != 1) {
                         status.setRollbackOnly();
                         return false;
@@ -276,17 +244,22 @@ public class QueueService {
             } catch (DuplicateKeyException e) {
                 duplicates++;
             } catch (RuntimeException e) {
-                if (!isDeadlock(e) || ++deadlocks >= MAX_ATTEMPTS) throw e;
+                if (!Tx.isDeadlock(e) || ++deadlocks >= Tx.MAX_ATTEMPTS) throw e;
             }
         }
         return Seating.FULL;
     }
 
-    /** Mời người đầu hàng chờ vào khám (UC.10.2). Trả về mã check-in vừa vào ghế. */
+    /**
+     * Mời người đầu hàng chờ vào khám (UC.10.2). Trả về mã check-in vừa vào ghế. Người đầu hàng không xếp ghế được mà vẫn còn
+     * chờ (phiếu của họ không còn ở trạng thái đã check-in) bị bỏ qua trong lần gọi này và thử người kế tiếp, nên một dòng
+     * hỏng không chặn cả hàng và cũng không báo đầy phòng oan.
+     */
     public long inviteNext(LocalDate date, Instant now) {
-        // Người đầu hàng bị lấy mất giữa chừng (mời đồng thời) thì chọn lại người đầu mới, không báo đầy phòng oan
+        Set<Long> skipped = new HashSet<>();
+        // Người đầu hàng bị lấy mất giữa chừng (mời đồng thời) thì chọn lại người đầu mới
         for (int attempt = 0; attempt < 50; attempt++) {
-            List<Checkin> waiting = waitingList(date);
+            List<Checkin> waiting = waitingList(date).stream().filter(c -> !skipped.contains(c.getId())).toList();
             if (waiting.isEmpty()) throw Errors.conflict("Chưa có ai đang chờ.", "QUEUE_EMPTY");
             Checkin head = waiting.get(0);
             switch (seatOne(head, date, now)) {
@@ -294,7 +267,7 @@ public class QueueService {
                     return head.getId();
                 }
                 case FULL -> throw roomFull();
-                case GONE -> { }
+                case GONE -> skipped.add(head.getId());
             }
         }
         throw roomFull();
@@ -343,9 +316,9 @@ public class QueueService {
     /** Hoàn tác vào khám: trở lại hàng chờ đúng vị trí theo giờ check-in (BR.27). */
     public void undoEnter(long checkinId) {
         Checkin checkin = checkins.findById(checkinId).filter(c -> "IN_ROOM".equals(c.getStatus())).orElseThrow(QueueService::notInRoom);
-        inTransaction(() -> {
+        tx.run(() -> {
             int appointmentMoved = jdbc.update("UPDATE appointments SET status = 'CHECKED_IN', updated_at = ? WHERE id = ? AND status = 'IN_PROGRESS'",
-                    utc(clock.instant()), checkin.getAppointmentId());
+                    Tx.utc(clock.instant()), checkin.getAppointmentId());
             // Phiếu không còn đang khám (đã hoàn thành...): quay lui, không đưa người đã xong về hàng chờ
             if (appointmentMoved != 1) throw Errors.conflict(STALE_APPOINTMENT, "STALE");
             int changed = jdbc.update("UPDATE checkins SET status = 'WAITING', seat_no = NULL, entered_at = NULL WHERE id = ? AND status = 'IN_ROOM'",
@@ -364,23 +337,12 @@ public class QueueService {
      */
     public boolean markCheckinCompleted(long checkinId, Instant now) {
         return jdbc.update("UPDATE checkins SET status = 'COMPLETED', completed_at = ?, seat_no = NULL WHERE id = ? AND status = 'IN_ROOM'",
-                utc(now), checkinId) == 1;
+                Tx.utc(now), checkinId) == 1;
     }
 
     /** Mời người kế tiếp vào ghế vừa trống nếu tự động mời đang bật. Phải gọi ngoài giao dịch, sau khi giao dịch hoàn thành đã commit. */
     public void fillAfterCompletion(LocalDate visitDate) {
         if (getAutoInvite()) fillSeats(visitDate, List.of(), clock.instant());
-    }
-
-    /**
-     * Hoàn thành một check-in rồi mời người kế tiếp (completeCheckin của Node), mỗi bước tự thành công riêng. Trả về false
-     * nếu check-in không còn ở trong phòng. Việc lưu bệnh án không dùng hàm này mà gọi hai bước trên tách rời quanh giao dịch.
-     */
-    public boolean completeCheckin(long checkinId, Instant now) {
-        Checkin checkin = checkins.findById(checkinId).orElse(null);
-        if (!markCheckinCompleted(checkinId, now)) return false;
-        if (checkin != null) fillAfterCompletion(checkin.getVisitDate());
-        return true;
     }
 
     // ---------- Xem hàng đợi ----------

@@ -11,16 +11,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
 import vn.chuctu.clinic.account.User;
 import vn.chuctu.clinic.account.UserRepository;
 import vn.chuctu.clinic.appointment.Appointment;
@@ -28,6 +25,7 @@ import vn.chuctu.clinic.appointment.AppointmentRepository;
 import vn.chuctu.clinic.common.Constants;
 import vn.chuctu.clinic.common.Errors;
 import vn.chuctu.clinic.common.Opt;
+import vn.chuctu.clinic.common.Tx;
 import vn.chuctu.clinic.common.VnTime;
 import vn.chuctu.clinic.patient.Patient;
 import vn.chuctu.clinic.patient.PatientRepository;
@@ -44,7 +42,7 @@ import vn.chuctu.clinic.record.RecordForms.RecordData;
  * hoặc cùng quay lui. Mời người kế tiếp vào ghế vừa trống chạy sau khi giao dịch đã commit, ngoài mọi giao dịch, vì mỗi lần thử
  * một ghế của hàng đợi là giao dịch riêng và không thấy dòng chưa commit.
  *
- * <p>Khung giờ sửa 24 giờ tính theo {@link Clock} (chỗ Node dùng Date.now). Không gọi các hàm ghi từ trong một giao dịch khác.
+ * <p>Khung giờ sửa 24 giờ tính theo {@link Clock} (chỗ Node dùng Date.now). Không gọi các hàm ghi từ trong một giao dịch khác (xem {@link Tx}).
  */
 @Service
 public class RecordService {
@@ -54,7 +52,6 @@ public class RecordService {
     /** Phiếu kết quả chỉ sửa được trong 24 giờ kể từ lúc xác nhận. */
     public static final Duration EDIT_WINDOW = Duration.ofHours(24);
 
-    private static final int MAX_ATTEMPTS = 3;
     private static final String NOT_FOUND = "Không tìm thấy phiếu kết quả.";
 
     private final MedicalRecordRepository records;
@@ -65,7 +62,7 @@ public class RecordService {
     private final CheckinRepository checkins;
     private final QueueService queue;
     private final JdbcTemplate jdbc;
-    private final TransactionTemplate tx;
+    private final Tx tx;
     private final Clock clock;
 
     public RecordService(MedicalRecordRepository records, MedicalRecordEditRepository edits, AppointmentRepository appointments,
@@ -79,30 +76,12 @@ public class RecordService {
         this.checkins = checkins;
         this.queue = queue;
         this.jdbc = jdbc;
-        this.tx = new TransactionTemplate(transactionManager);
+        this.tx = new Tx(transactionManager);
         this.clock = clock;
     }
 
     private Instant now() {
         return clock.instant().truncatedTo(ChronoUnit.MILLIS);
-    }
-
-    private static boolean isDeadlock(Throwable error) {
-        for (Throwable t = error; t != null; t = t.getCause() == t ? null : t.getCause()) {
-            if (t instanceof ConcurrencyFailureException) return true;
-        }
-        return false;
-    }
-
-    /** Một giao dịch, làm lại khi MySQL báo deadlock. */
-    private <T> T inTransaction(Supplier<T> work) {
-        for (int attempt = 1;; attempt++) {
-            try {
-                return tx.execute(status -> work.get());
-            } catch (RuntimeException e) {
-                if (attempt >= MAX_ATTEMPTS || !isDeadlock(e)) throw e;
-            }
-        }
     }
 
     // ---------- Hình dạng trả về giao diện ----------
@@ -219,10 +198,10 @@ public class RecordService {
 
         MedicalRecord saved;
         try {
-            saved = inTransaction(() -> {
+            saved = tx.run(() -> {
                 // Thứ tự khoá cố định: phiếu khám, check-in, rồi mới đến bệnh án
                 int moved = jdbc.update("UPDATE appointments SET status = 'COMPLETED', updated_at = ? WHERE id = ? AND status = 'IN_PROGRESS'",
-                        java.sql.Timestamp.from(now), appt.getId());
+                        Tx.utc(now), appt.getId());
                 if (moved != 1) throw Errors.conflict("Chỉ lập phiếu kết quả cho người đang trong phòng khám.", "NOT_IN_PROGRESS");
                 if (checkin != null && !queue.markCheckinCompleted(checkin.getId(), now)) {
                     throw Errors.conflict("Phiếu khám vừa thay đổi trạng thái, vui lòng tải lại.", "STALE");
@@ -255,7 +234,7 @@ public class RecordService {
         Patient patient = patients.findById(peek.getPatientId()).orElseThrow(() -> Errors.notFound("Không tìm thấy hồ sơ bệnh nhân."));
         if (patient.isLocked()) throw Errors.forbidden("Hồ sơ đang bị khoá nên không sửa được phiếu kết quả.");
 
-        MedicalRecord record = inTransaction(() -> {
+        MedicalRecord record = tx.run(() -> {
             // Khoá dòng: hai người sửa cùng lúc xếp hàng và mỗi người so với giá trị mới nhất
             MedicalRecord r = records.findForUpdate(recordId).orElseThrow(() -> Errors.notFound(NOT_FOUND));
             Instant now = now();

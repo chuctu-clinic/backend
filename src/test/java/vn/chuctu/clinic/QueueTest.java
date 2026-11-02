@@ -247,9 +247,10 @@ class QueueTest extends IntegrationTest {
         JsonNode first = q.get("seats").get(0);
         assertThat(first.get("seatNo").intValue()).isEqualTo(1);
         long checkinId = Long.parseLong(first.get("id").stringValue());
-        assertThat(queue.completeCheckin(checkinId, Instant.now())).isTrue();
         long firstAppt = Long.parseLong(first.get("appointmentId").stringValue());
         jdbc.update("UPDATE appointments SET status = 'COMPLETED' WHERE id = ?", firstAppt);
+        assertThat(queue.markCheckinCompleted(checkinId, Instant.now())).isTrue();
+        queue.fillAfterCompletion(todayVn());
 
         q = queueState(staff);
         assertThat(q.get("inRoomCount").intValue()).isEqualTo(5);
@@ -396,9 +397,31 @@ class QueueTest extends IntegrationTest {
         assertThat(apptStatus(a)).isEqualTo("COMPLETED");
         assertThat(checkinStatus(a)).isEqualTo("WAITING");
         assertThat(jdbc.queryForObject("SELECT seat_no FROM checkins WHERE appointment_id = ?", Integer.class, a)).isNull();
+        // Dòng hỏng không phải là phòng đầy: không còn ai mời được thì báo hàng chờ trống
         var res = staff.post("/api/staff/queue/invite", body()).expectStatus(409).json();
-        assertThat(res.get("error").get("code").stringValue()).isEqualTo("ROOM_FULL");
+        assertThat(res.get("error").get("code").stringValue()).isEqualTo("QUEUE_EMPTY");
         assertThat(apptStatus(a)).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    @DisplayName("[java] mời kế tiếp bỏ qua người đầu hàng không xếp ghế được và mời người sau")
+    void javaMoiBoQuaDongHong() {
+        var staff = client().staff();
+        autoInvite(staff, false);
+        long stuck = todayAppointment("Người đã xong");
+        jdbc.update("UPDATE appointments SET status = 'COMPLETED' WHERE id = ?", stuck);
+        insertCheckin(stuck, "WAITING", null);
+        jdbc.update("UPDATE checkins SET priority_group = 'PRIORITY' WHERE appointment_id = ?", stuck);
+        long next = todayAppointment("Người chờ thật");
+        staff.post("/api/staff/appointments/" + next + "/checkin", body()).expectStatus(200);
+        // Người hỏng đứng đầu hàng (nhóm ưu tiên), người chờ thật đứng sau
+        assertThat(queueState(staff).get("waiting").get(0).get("appointmentId").stringValue()).isEqualTo(String.valueOf(stuck));
+
+        staff.post("/api/staff/queue/invite", body()).expectStatus(200);
+        assertThat(apptStatus(next)).isEqualTo("IN_PROGRESS");
+        assertThat(checkinStatus(next)).isEqualTo("IN_ROOM");
+        assertThat(apptStatus(stuck)).isEqualTo("COMPLETED");
+        assertThat(checkinStatus(stuck)).isEqualTo("WAITING");
     }
 
     @Test

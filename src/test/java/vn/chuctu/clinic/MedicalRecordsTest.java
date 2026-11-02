@@ -262,6 +262,43 @@ class MedicalRecordsTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("[java] giờ ghi vào database là UTC đúng đồng hồ: updated_at của phiếu khám, completed_at, created_at của bệnh án")
+    void javaGioGhiLaUtc() {
+        var staff = client().staff();
+        var user = client().registerUser();
+        long appt = todayAppointment(user.selfPatientId());
+        staff.post("/api/staff/appointments/" + appt + "/checkin", body()).expectStatus(200);
+        Instant fixed = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).plusMillis(123);
+        clock.set(fixed);
+        staff.post("/api/staff/appointments/" + appt + "/record", body("diagnosis", "Đau vai")).expectStatus(201);
+
+        java.time.LocalDateTime expected = java.time.LocalDateTime.ofInstant(fixed, java.time.ZoneOffset.UTC);
+        assertThat(jdbc.queryForObject("SELECT updated_at FROM appointments WHERE id = ?", java.time.LocalDateTime.class, appt))
+                .isEqualTo(expected);
+        assertThat(jdbc.queryForObject("SELECT completed_at FROM checkins WHERE appointment_id = ?", java.time.LocalDateTime.class, appt))
+                .isEqualTo(expected);
+        assertThat(jdbc.queryForObject("SELECT created_at FROM medical_records WHERE appointment_id = ?", java.time.LocalDateTime.class, appt))
+                .isEqualTo(expected);
+    }
+
+    @Test
+    @DisplayName("[java] chủ tài khoản xem được kết quả khám của người thân, tài khoản khác thì 404")
+    void javaXemKetQuaNguoiThan() {
+        var staff = client().staff();
+        var owner = client().registerUser("0917000031", "Chủ Tài Khoản");
+        var other = client().registerUser("0917000032", "Người Lạ");
+        String relative = owner.post("/api/me/patients",
+                body("fullName", "Trần Thị Mẹ", "birthYear", 1940, "gender", "NU", "relationship", "KHAC")).expectStatus(201)
+                .json().get("patient").get("id").stringValue();
+        Visit visit = completedVisit(staff, relative, body("diagnosis", "Của mẹ"));
+
+        JsonNode record = owner.get("/api/me/appointments/" + visit.appointmentId() + "/result").expectStatus(200).json().get("record");
+        assertThat(record.get("diagnosis").stringValue()).isEqualTo("Của mẹ");
+        assertThat(record.get("patient").get("id").stringValue()).isEqualTo(relative);
+        other.get("/api/me/appointments/" + visit.appointmentId() + "/result").expectStatus(404);
+    }
+
+    @Test
     @DisplayName("[java] phiếu đã có bệnh án thì báo RECORD_EXISTS")
     void javaPhieuDaCoBenhAn() {
         var staff = client().staff();
