@@ -43,6 +43,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
     int resetPassword(@Param("id") Long id, @Param("hash") String hash, @Param("oldHash") String oldHash,
             @Param("now") Instant now);
 
+    /** Ghi lần đăng nhập gần nhất, không đè các cột khác (admin có thể vừa khoá, đổi vai trò hay cấp mật khẩu tạm). */
+    @Transactional
+    @Modifying
+    @Query("update User u set u.lastLoginAt = :now, u.updatedAt = :now where u.id = :id")
+    int recordLogin(@Param("id") Long id, @Param("now") Instant now);
+
     boolean existsByPhoneAndIdNot(String phone, Long id);
 
     /**

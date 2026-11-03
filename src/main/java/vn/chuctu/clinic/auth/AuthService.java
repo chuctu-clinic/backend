@@ -158,8 +158,7 @@ public class AuthService {
     public LoginStart startLogin(String phone, String deviceId) {
         User user = findLoginUser(phone);
         if (isTrusted(user.getId(), deviceId)) {
-            user.setLastLoginAt(now());
-            return new LoginStart(users.save(user), false, null);
+            return new LoginStart(recordLogin(user.getId()), false, null);
         }
         return new LoginStart(null, true, otp.issue(phone, "NEW_DEVICE", null, null));
     }
@@ -167,8 +166,16 @@ public class AuthService {
     public User completeLogin(String phone, Proof proof) {
         User user = findLoginUser(phone);
         otp.verifyProof(phone, "NEW_DEVICE", proof);
-        user.setLastLoginAt(now());
-        return users.save(user);
+        return recordLogin(user.getId());
+    }
+
+    /**
+     * Ghi lần đăng nhập bằng UPDATE đúng cột rồi đọc lại: user đã đọc từ trước bước chậm (bcrypt, kiểm token) nên lưu cả
+     * dòng sẽ đè thay đổi admin vừa làm trong lúc đó (Mongoose save chỉ ghi trường đã sửa).
+     */
+    private User recordLogin(Long userId) {
+        users.recordLogin(userId, now());
+        return users.findById(userId).orElseThrow();
     }
 
     public Map<String, Object> resendCode(String phone, String purpose) {
@@ -194,8 +201,7 @@ public class AuthService {
             throw Errors.unauthorized("Số điện thoại/email hoặc mật khẩu chưa đúng.");
         }
         if (!user.isActive()) throw Errors.forbidden("Tài khoản đang bị khoá. Vui lòng liên hệ quản trị viên.");
-        user.setLastLoginAt(now());
-        return users.save(user);
+        return recordLogin(user.getId());
     }
 
     public User changePassword(Long userId, String currentPassword, String newPassword) {
@@ -209,9 +215,13 @@ public class AuthService {
             throw Errors.badRequest("Mật khẩu mới phải khác mật khẩu hiện tại.",
                     Map.of("fields", Map.of("newPassword", "Mật khẩu mới phải khác mật khẩu hiện tại.")), "BAD_REQUEST");
         }
-        user.setPasswordHash(hashPassword(newPassword));
-        user.setMustChangePassword(false);
-        return users.save(user);
+        // Chỉ ghi mật khẩu khi vẫn là mật khẩu vừa kiểm. Nếu admin cấp mật khẩu tạm trong lúc bcrypt chạy thì không đè mật
+        // khẩu tạm; Node (save) sẽ đè, nhưng khi đó mật khẩu hiện tại người dùng nhập đã không còn đúng nên báo như sai mật khẩu.
+        if (users.resetPassword(userId, hashPassword(newPassword), user.getPasswordHash(), now()) == 0) {
+            throw Errors.badRequest("Mật khẩu hiện tại chưa đúng.",
+                    Map.of("fields", Map.of("currentPassword", "Mật khẩu hiện tại chưa đúng.")), "BAD_REQUEST");
+        }
+        return users.findById(userId).orElseThrow();
     }
 
     public String hashPassword(String password) {
