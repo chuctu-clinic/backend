@@ -1,0 +1,17 @@
+# Không đưa bí mật và rác build vào ảnh
+.env
+.env.*
+!.env.example
+.git
+.gitattributes
+.gitignore
+.superpowers
+.idea
+.vscode
+target
+docs
+scripts
+README.md
+Dockerfile
+docker-compose.yml
+.dockerignore

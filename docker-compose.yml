@@ -1,0 +1,56 @@
+# Chạy database và API:
+#   docker compose up --build
+# API ở http://localhost:4000/api. Giao diện chạy từ repo frontend (docker compose ở đó trỏ /api về cổng 4000 này).
+# Đặt JWT_SECRET, DB_PASSWORD, SEED_ADMIN_PASSWORD trong file .env cạnh docker-compose.yml (xem .env.example).
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_as_ci
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: chuctu
+      MYSQL_USER: chuctu
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Đặt DB_PASSWORD trong file .env}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u\"$$MYSQL_USER\" -p\"$$MYSQL_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  server:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-4000}:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DB_URL: jdbc:mysql://mysql:3306/chuctu
+      DB_USERNAME: chuctu
+      DB_PASSWORD: ${DB_PASSWORD:?Đặt DB_PASSWORD trong file .env}
+      # Chuỗi ngẫu nhiên, ít nhất 32 ký tự
+      JWT_SECRET: ${JWT_SECRET:?Đặt JWT_SECRET trong file .env}
+      # Địa chỉ giao diện (repo frontend) được gọi API
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:8080}
+      # console: mã 6 số được in ra log, xem bằng: docker compose logs -f server
+      SMS_PROVIDER: console
+      EMAIL_PROVIDER: console
+      # Tài khoản Admin tạo ở lần chạy đầu (xem .env.example); Tiếp tân chỉ tạo khi có mật khẩu
+      SEED_ADMIN_PHONE: ${SEED_ADMIN_PHONE:-}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      SEED_RECEPTIONIST_PHONE: ${SEED_RECEPTIONIST_PHONE:-}
+      SEED_RECEPTIONIST_EMAIL: ${SEED_RECEPTIONIST_EMAIL:-}
+      SEED_RECEPTIONIST_NAME: ${SEED_RECEPTIONIST_NAME:-}
+      SEED_RECEPTIONIST_PASSWORD: ${SEED_RECEPTIONIST_PASSWORD:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  mysql-data:
