@@ -486,10 +486,12 @@ public class QueueService {
         Map<Long, Map<String, Object>> out = new HashMap<>();
         if (appointmentIds.isEmpty()) return out;
         List<Checkin> found = checkins.findByAppointmentIdInAndStatusIn(appointmentIds, LIVE);
-        Map<LocalDate, List<Checkin>> waitingByDate = new HashMap<>();
-        for (Checkin c : found) if ("WAITING".equals(c.getStatus())) waitingByDate.computeIfAbsent(c.getVisitDate(), d -> new ArrayList<>()).add(c);
+        // Thứ tự tính trên cả hàng chờ của ngày, không chỉ các phiếu đang hiện: danh sách có thể đã lọc theo trạng thái hay từ khoá
+        Set<LocalDate> waitingDates = new HashSet<>();
+        for (Checkin c : found) if ("WAITING".equals(c.getStatus())) waitingDates.add(c.getVisitDate());
         Map<Long, Integer> order = new HashMap<>();
-        for (List<Checkin> list : waitingByDate.values()) {
+        for (LocalDate date : waitingDates) {
+            List<Checkin> list = new ArrayList<>(checkins.findByVisitDateAndStatus(date, "WAITING"));
             sortWaiting(list);
             for (int i = 0; i < list.size(); i++) order.put(list.get(i).getId(), i + 1);
         }

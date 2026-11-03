@@ -517,17 +517,20 @@ class QueueTest extends IntegrationTest {
         List<Long> ids = checkInAll(staff, 6);
         assertThat(queueState(staff).get("waitingCount").intValue()).isEqualTo(1);
 
-        // Người ở ghế 1 huỷ phiếu: check-in về REVERTED, ghế trống ngay (Node không tự mời người kế tiếp khi huỷ)
+        // Người ở ghế 1 huỷ phiếu: check-in về REVERTED, ghế nhả ra và (tự động mời đang bật) người đang chờ vào ghế ngay.
+        // Khác Node: Node để ghế trống đến lần thay đổi hàng đợi sau.
         staff.post("/api/staff/appointments/" + ids.get(0) + "/cancel", body("reason", "Bệnh nhân xin huỷ")).expectStatus(200);
         assertThat(checkinStatus(ids.get(0))).isEqualTo("REVERTED");
         var q = queueState(staff);
+        assertThat(q.get("inRoomCount").intValue()).isEqualTo(5);
+        assertThat(q.get("seats").get(0).get("appointmentId").stringValue()).isEqualTo(String.valueOf(ids.get(5)));
+        assertThat(q.get("waitingCount").intValue()).isZero();
+
+        // Người vừa vào ghế huỷ phiếu: rời phòng, không còn ai chờ nên ghế trống
+        staff.post("/api/staff/appointments/" + ids.get(5) + "/cancel", body("reason", "Đặt nhầm")).expectStatus(200);
+        q = queueState(staff);
         assertThat(q.get("inRoomCount").intValue()).isEqualTo(4);
         assertThat(q.get("seats").get(0).get("empty").booleanValue()).isTrue();
-        assertThat(q.get("waitingCount").intValue()).isEqualTo(1);
-
-        // Người đang chờ huỷ phiếu cũng rời hàng
-        staff.post("/api/staff/appointments/" + ids.get(5) + "/cancel", body("reason", "Đặt nhầm")).expectStatus(200);
-        assertThat(queueState(staff).get("waitingCount").intValue()).isZero();
 
         // Ghế vừa nhả dùng lại được
         long late = todayAppointment("Người đến muộn");

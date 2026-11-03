@@ -80,3 +80,6 @@ Các lỗi này có cả ở bản Node, bản Java sửa nên hành vi khác No
 - **Đổi giờ sang ngày khác**: bệnh nhân đã có phiếu còn hiệu lực ngày đó thì trả 409 `ALREADY_BOOKED`, như khi đặt mới.
 - **Đặt hộ kèm check-in ngay**: ngày khám không phải hôm nay thì trả 409 `WRONG_DAY` trước khi tạo phiếu, không để lại phiếu thừa.
 - **Giới hạn nhập sai mã**: mỗi lần nhập được giữ lượt bằng một lệnh UPDATE có điều kiện trước khi so mã. Nhiều yêu cầu dò mã cùng lúc vẫn chỉ được so tối đa 5 lần.
+- **Số thứ tự hàng chờ** ở Lịch trong ngày tính trên cả hàng chờ của ngày, kể cả khi danh sách đang lọc theo trạng thái hay từ khoá (Node chỉ đếm các phiếu đang hiện).
+- **Người dùng huỷ phiếu**: tìm phiếu theo cùng điều kiện với xem phiếu (phiếu của hồ sơ thuộc tài khoản), nên phiếu đặt tại quầy cho hồ sơ của mình huỷ được, không còn trả 404.
+- **Huỷ phiếu người đang khám**: sau khi huỷ, nếu bật tự động mời thì người kế tiếp vào ghế vừa trống ngay (Node để ghế trống đến lần thay đổi hàng đợi sau).

@@ -225,7 +225,8 @@ public class AppointmentService {
 
     public void userCancel(User user, long appointmentId, String reason) {
         tx.run(() -> {
-            Appointment appt = appointments.findByIdAndUserId(appointmentId, user.getId())
+            // Cùng điều kiện sở hữu với xem phiếu: phiếu của hồ sơ thuộc tài khoản (kể cả phiếu đặt tại quầy không ghi userId)
+            Appointment appt = appointments.findOwned(appointmentId, user.getId())
                     .orElseThrow(() -> Errors.notFound("Không tìm thấy phiếu khám."));
             cancelInternal(appt, user, reason, true);
             return null;
@@ -236,11 +237,13 @@ public class AppointmentService {
         if (isBlank(reason)) {
             throw Errors.badRequest("Vui lòng chọn lý do huỷ.", Map.of("fields", Map.of("reason", "Vui lòng chọn lý do huỷ.")), "BAD_REQUEST");
         }
-        tx.run(() -> {
+        Appointment cancelled = tx.run(() -> {
             Appointment appt = appointments.findById(appointmentId).orElseThrow(() -> Errors.notFound("Không tìm thấy phiếu khám."));
             cancelInternal(appt, staff, reason);
-            return null;
+            return appt;
         });
+        // Người đang khám bị huỷ thì ghế trống: mời người kế tiếp (nếu bật tự động mời), sau khi việc huỷ đã commit
+        if ("IN_PROGRESS".equals(cancelled.getStatus())) queue.fillAfterCompletion(cancelled.getSlotDate());
     }
 
     /** Đổi giờ tính như đặt mới vào khung mới: phiếu cũ huỷ, phiếu mới ghi rescheduledFromId (BR.26). Trả về phiếu mới. */
