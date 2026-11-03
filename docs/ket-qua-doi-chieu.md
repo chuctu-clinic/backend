@@ -62,9 +62,11 @@ Kết quả lần chạy cuối: `Đã chạy 304 bước, 0 bước khác nhau 
 
 Các khác biệt tìm thấy lúc đầu mà hoá ra do kịch bản (ID số so với ObjectId, khung giờ không tồn tại, số lần chạy lặp) đã được sửa trong script, không phải trong Java. Ví dụ: Node trả `NOT_FOUND` "Không tìm thấy dữ liệu." cho ID sai dạng (`CastError`), còn Java cũng trả đúng thông điệp đó; với ID đúng dạng nhưng không có thì cả hai trả thông điệp riêng từng loại.
 
-## 4. Chưa thử — controller/người dùng làm
+## 4. Thử tay (03/11/2026)
 
-Bước 5 (thử tay với frontend) và bước 6 (OTP email qua SMTP thật, Firebase thật) chưa thử — controller/người dùng làm.
+Bản Java chạy profile demo ở `127.0.0.1:4100`, frontend (Vite) ở `127.0.0.1:5180`, thao tác trên Chrome.
 
-- Bước 5: chạy bản Java cổng 4000, frontend cổng 5173, truy cập qua `127.0.0.1`. Thử đăng ký, đặt lịch, huỷ, tiếp nhận, mời vào khám, lưu kết quả, quản lý bài viết, tải ảnh.
-- Bước 6: người dùng điền `backend-java/.env`. Thử quên mật khẩu qua SMTP, đăng nhập bằng số thử trên Firebase Console với `SMS_PROVIDER=firebase`. Chưa điền được thì ghi là chưa thử.
+- Bước 5, với frontend, SMS và email ở chế độ `console`: đăng ký kèm mã 6 số, đặt lịch (khung đã đủ chỗ bị khoá đúng), huỷ, tiếp tân check-in, mời người đầu hàng chờ vào ghế trống, lưu kết quả khám, Admin đăng bài kèm ảnh thu nhỏ (tải ảnh qua `/api/admin/uploads`), bài hiện ở trang tin tức. Đều đạt, không có lỗi trên console trình duyệt hay ERROR trong log server.
+- Bước 6, Firebase thật (`SMS_PROVIDER=firebase`, `FIREBASE_TEST_NUMBERS_ONLY=1`): đăng ký bằng số thử trên Firebase Console, nhập mã thử, server kiểm ID token thật của Google, tạo tài khoản thành công.
+- Bước 6, SMTP Gmail thật: quên mật khẩu tài khoản nội bộ, email chứa mã 6 số đến được hộp thư, nhập mã, đặt mật khẩu mới, đăng nhập lại bằng mật khẩu mới thành công.
+  - Lần thử đầu thất bại vì `MAIL_FROM` chỉ có tên hiển thị, không có địa chỉ (`Local address contains control or whitespace`). Bản Java cần `MAIL_FROM` là địa chỉ, hoặc dạng `Tên <địa chỉ>`. Sửa `.env` xong thì gửi được.

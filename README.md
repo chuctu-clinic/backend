@@ -127,7 +127,7 @@ Chép `.env.example` thành `.env`. Tên biến giữ như bản Node, trừ `MO
 | `FIREBASE_TEST_NUMBERS_ONLY` | `1`: chỉ dùng số thử trên Firebase Console, bỏ qua reCAPTCHA. Không có tác dụng khi production. |
 | `HOST_PORT` | Chỉ cho Docker Compose: cổng trên máy chủ nối với cổng 4000 của container (mặc định 4000). |
 
-Trạng thái kiểm chứng: gửi email qua SMTP thật và gửi mã qua Firebase thật **chưa được thử** trên bản Java (kiểm thử chỉ dùng nhà cung cấp `console` và giả lập). Giao diện frontend cũng chưa được thử tay với bản Java; việc đối chiếu bằng script (bên dưới) chỉ chạy qua HTTP.
+Trạng thái kiểm chứng: ngày 03/11/2026 đã thử tay giao diện frontend với bản Java, gửi email thật qua Gmail SMTP và gửi mã qua Firebase thật (số thử). Kết quả xem `docs/ket-qua-doi-chieu.md` mục 4. Kiểm thử tự động chỉ dùng nhà cung cấp `console` và giả lập.
 
 ## Cấu trúc mã nguồn
 
@@ -190,7 +190,7 @@ node scripts/compare-responses.mjs [--verbose] [--show <đoạn nhãn bước>]
 
 ## Gửi mã xác nhận qua Firebase
 
-Mục này chỉ mô tả cấu hình; không đưa giá trị thật vào git. Cấu hình Firebase thật **chưa được thử** với bản Java.
+Mục này chỉ mô tả cấu hình; không đưa giá trị thật vào git. Đã thử với Firebase thật bằng số thử trên Firebase Console (xem `docs/ket-qua-doi-chieu.md` mục 4).
 
 Đặt `SMS_PROVIDER=firebase`. Trình duyệt gửi và xác nhận mã bằng Firebase Phone Auth (kèm reCAPTCHA ẩn), rồi gửi ID token cho server; server kiểm token (chỉ cần Project ID, không cần khoá service account), đối chiếu số điện thoại và lần xin mã, rồi cấp phiên đăng nhập như cũ. Giới hạn 3 mã mỗi giờ và chờ 60 giây (BR.03) vẫn do server giữ.
 
@@ -208,7 +208,7 @@ Thử không tốn tiền, không gửi SMS thật:
 
 ## Gửi mã qua email (SMTP)
 
-Mục này chỉ mô tả cấu hình. Đặt `EMAIL_PROVIDER=smtp` và điền `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` trong `.env` (không đưa vào git, không dán vào chat hay log). Với Gmail dùng Mật khẩu ứng dụng. Cổng 465 dùng kết nối bảo mật trực tiếp. Gửi email thật **chưa được thử** với bản Java.
+Mục này chỉ mô tả cấu hình. Đặt `EMAIL_PROVIDER=smtp` và điền `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` trong `.env` (không đưa vào git, không dán vào chat hay log). Với Gmail dùng Mật khẩu ứng dụng. Cổng 465 dùng kết nối bảo mật trực tiếp. `MAIL_FROM` phải là địa chỉ email hoặc dạng `Tên <địa chỉ>`, và địa chỉ nên trùng `SMTP_USER`. Chỉ ghi tên hiển thị thì gửi lỗi. Đã thử gửi thật qua Gmail.
 
 ## Việc còn lại
 
