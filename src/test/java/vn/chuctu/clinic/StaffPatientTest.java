@@ -258,4 +258,14 @@ class StaffPatientTest extends IntegrationTest {
         user.post("/api/admin/patients/1/lock", Map.of()).expectStatus(403);
         client().get("/api/staff/patients").expectStatus(401);
     }
+
+    @Test
+    @DisplayName("[java] trang quá xa trả danh sách rỗng và vẫn đủ tổng số như Node, không lỗi 500")
+    void trangQuaXa() {
+        newPatient();
+        var res = client().staff().get("/api/staff/patients?page=30000000&limit=100").expectStatus(200).json();
+        assertThat(res.get("items").size()).isEqualTo(0);
+        assertThat(res.get("total").intValue()).isEqualTo(1);
+        assertThat(res.get("page").intValue()).isEqualTo(30000000);
+    }
 }

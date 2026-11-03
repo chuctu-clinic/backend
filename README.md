@@ -83,7 +83,7 @@ cp .env.example .env     # rồi điền ba biến bên dưới
 docker compose up --build
 ```
 
-Trong `.env` cần có:
+Trong `.env` cần có cả ba biến sau; thiếu biến nào thì `docker compose` báo lỗi ngay, không khởi động rồi lặp lại việc tự khởi động lại:
 
 - `DB_PASSWORD`: mật khẩu tài khoản MySQL `chuctu` (compose tạo tài khoản và database `chuctu` theo mật khẩu này ở lần đầu; đổi sau đó thì phải xoá volume hoặc đổi trong MySQL).
 - `JWT_SECRET`: chuỗi ngẫu nhiên, ít nhất 32 ký tự (production).

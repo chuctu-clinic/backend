@@ -15,6 +15,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -51,6 +53,7 @@ import vn.chuctu.clinic.patient.PatientRepository;
 @Service
 public class QueueService {
 
+    private static final Logger log = LoggerFactory.getLogger(QueueService.class);
     public static final String AUTO_KEY = "queue.autoInvite";
 
     private static final int SEATS = Rules.QUEUE_SEATS;
@@ -163,7 +166,7 @@ public class QueueService {
             }, keys);
             return keys.getKey().longValue();
         });
-        if (getAutoInvite()) fillSeats(today, List.of(), clock.instant());
+        if (getAutoInvite()) fillSeatsAfterCommit(today, List.of());
         return checkinId;
     }
 
@@ -313,6 +316,18 @@ public class QueueService {
         fillSeats(date, List.of(), clock.instant());
     }
 
+    /**
+     * Lấp ghế sau khi thay đổi chính đã commit. Lỗi ở đây không được làm yêu cầu báo thất bại (việc chính đã xong, như
+     * RecordService sau khi lưu bệnh án); lần check-in hoặc mời kế tiếp sẽ lấp lại.
+     */
+    public void fillSeatsAfterCommit(LocalDate date, Collection<Long> exclude) {
+        try {
+            fillSeats(date, exclude, clock.instant());
+        } catch (RuntimeException e) {
+            log.warn("Không lấp được ghế trống ngày {} sau khi thay đổi hàng đợi đã lưu", date, e);
+        }
+    }
+
     /** Hoàn tác vào khám: trở lại hàng chờ đúng vị trí theo giờ check-in (BR.27). */
     public void undoEnter(long checkinId) {
         Checkin checkin = checkins.findById(checkinId).filter(c -> "IN_ROOM".equals(c.getStatus())).orElseThrow(QueueService::notInRoom);
@@ -327,7 +342,7 @@ public class QueueService {
             return null;
         });
         // Ghế vừa trống nhận người kế tiếp; người vừa hoàn tác vào ở ghế trống sau
-        if (getAutoInvite()) fillSeats(checkin.getVisitDate(), List.of(checkinId), clock.instant());
+        if (getAutoInvite()) fillSeatsAfterCommit(checkin.getVisitDate(), List.of(checkinId));
     }
 
     /**
@@ -342,7 +357,7 @@ public class QueueService {
 
     /** Mời người kế tiếp vào ghế vừa trống nếu tự động mời đang bật. Phải gọi ngoài giao dịch, sau khi giao dịch hoàn thành đã commit. */
     public void fillAfterCompletion(LocalDate visitDate) {
-        if (getAutoInvite()) fillSeats(visitDate, List.of(), clock.instant());
+        if (getAutoInvite()) fillSeatsAfterCommit(visitDate, List.of());
     }
 
     // ---------- Xem hàng đợi ----------

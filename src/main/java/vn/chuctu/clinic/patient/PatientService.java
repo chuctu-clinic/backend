@@ -21,6 +21,7 @@ import vn.chuctu.clinic.common.Body;
 import vn.chuctu.clinic.common.Counters;
 import vn.chuctu.clinic.common.Errors;
 import vn.chuctu.clinic.common.Likes;
+import vn.chuctu.clinic.common.Paging;
 import vn.chuctu.clinic.common.Opt;
 import vn.chuctu.clinic.common.Rules;
 import vn.chuctu.clinic.common.VnTime;
@@ -312,12 +313,15 @@ public class PatientService {
 
     /** Tìm theo họ tên, mã hoặc số điện thoại, mới nhất trước. {@code locked} là "true" hoặc "false", khác thì không lọc. */
     @Transactional(readOnly = true)
-    public PatientPage searchPatients(String q, String locked, int page, int limit) {
+    public PatientPage searchPatients(String q, String locked, Paging paging) {
         String pattern = q == null || q.isEmpty() ? null : Likes.contains(Body.jsTrim(q));
         Boolean lockedFilter = "true".equals(locked) ? Boolean.TRUE : "false".equals(locked) ? Boolean.FALSE : null;
+        Sort order = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+        // Vị trí bắt đầu vượt int thì chắc chắn không còn dòng nào, nhưng vẫn cần tổng số
+        boolean beyondEnd = paging.offset() > Integer.MAX_VALUE;
         Page<Patient> result = patients.search(pattern, lockedFilter,
-                PageRequest.of(page - 1, limit, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))));
-        return new PatientPage(result.getContent(), result.getTotalElements());
+                beyondEnd ? PageRequest.of(0, 1, order) : PageRequest.of(paging.page() - 1, paging.limit(), order));
+        return new PatientPage(beyondEnd ? List.of() : result.getContent(), result.getTotalElements());
     }
 
     @Transactional(readOnly = true)

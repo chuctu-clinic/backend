@@ -57,7 +57,7 @@ public class StaffPatientController {
     Map<String, Object> list(@RequestParam(required = false) String q, @RequestParam(required = false) String locked,
             @RequestParam(required = false) String page, @RequestParam(required = false) String limit) {
         Paging paging = Paging.of(page, limit, 20);
-        PatientService.PatientPage result = patients.searchPatients(q, locked, paging.page(), paging.limit());
+        PatientService.PatientPage result = patients.searchPatients(q, locked, paging);
         Map<Long, LocalDate> lastVisits = patients.lastRecordDates(result.items().stream().map(Patient::getId).toList());
         List<Map<String, Object>> items = new ArrayList<>();
         for (Patient patient : result.items()) {

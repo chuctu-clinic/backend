@@ -2,6 +2,7 @@ package vn.chuctu.clinic.queue;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -92,7 +93,7 @@ public class QueueController {
         boolean enabled = body.requiredBoolean("enabled");
         body.check();
         queue.setAutoInvite(enabled);
-        if (enabled) queue.fillSeats(today());
+        if (enabled) queue.fillSeatsAfterCommit(today(), List.of());
         return state();
     }
 }
