@@ -32,11 +32,10 @@ public class CorsHeadersFilter extends OncePerRequestFilter {
         response.setHeader("Access-Control-Allow-Credentials", "true");
         if (preflight) {
             response.setHeader("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE");
+            // Như cors của Node: Vary luôn có (header Allow-Headers phản chiếu yêu cầu), chỉ đặt Allow-Headers khi có yêu cầu
+            response.addHeader("Vary", "Access-Control-Request-Headers");
             String requested = request.getHeader("Access-Control-Request-Headers");
-            if (requested != null) {
-                response.setHeader("Access-Control-Allow-Headers", requested);
-                response.addHeader("Vary", "Access-Control-Request-Headers");
-            }
+            if (requested != null) response.setHeader("Access-Control-Allow-Headers", requested);
             response.setStatus(HttpServletResponse.SC_NO_CONTENT);
             response.setContentLength(0);
             return;

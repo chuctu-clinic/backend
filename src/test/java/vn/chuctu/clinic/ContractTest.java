@@ -140,4 +140,19 @@ class ContractTest extends IntegrationTest {
         var other = client().header("Origin", "http://evil.example").get("/api/auth/me").expectStatus(200);
         assertThat(other.headers().firstValue("access-control-allow-origin")).isEmpty();
     }
+
+    @Test
+    @DisplayName("[java] preflight luôn có Vary: Access-Control-Request-Headers như cors của Node, kể cả origin lạ hay không gửi header yêu cầu")
+    void preflightVary() {
+        var withHeaders = client().header("Origin", "http://localhost:5173").header("Access-Control-Request-Method", "POST")
+                .header("Access-Control-Request-Headers", "content-type").send("OPTIONS", "/api/auth/login", null).expectStatus(204);
+        assertThat(String.join(",", withHeaders.headers().allValues("vary")).toLowerCase()).contains("origin").contains("access-control-request-headers");
+        assertThat(withHeaders.headers().firstValue("access-control-allow-headers")).contains("content-type");
+
+        var stranger = client().header("Origin", "http://evil.example").header("Access-Control-Request-Method", "POST")
+                .send("OPTIONS", "/api/auth/login", null).expectStatus(204);
+        assertThat(String.join(",", stranger.headers().allValues("vary")).toLowerCase()).contains("origin").contains("access-control-request-headers");
+        assertThat(stranger.headers().firstValue("access-control-allow-origin")).isEmpty();
+        assertThat(stranger.headers().firstValue("access-control-allow-headers")).isEmpty();
+    }
 }
