@@ -39,5 +39,26 @@ public final class TestDatabase implements ApplicationContextInitializer<Configu
         // và dọn mã theo lịch làm đổi dữ liệu ngoài tầm kiểm soát của test (test tự gọi Seeder và VerificationCleanupJob)
         TestPropertyValues.of("spring.datasource.url=" + url, "clinic.no-show-job.enabled=false",
                 "clinic.seed-on-startup=false", "clinic.cleanup-job.enabled=false").applyTo(context);
+        isolateFromDeveloperEnv(context.getEnvironment().getPropertySources());
     }
+
+    /**
+     * .env của máy phát triển (SMS_PROVIDER=firebase, SMTP thật, SEED_*, CLIENT_ORIGIN...) không được lọt vào test: mọi biến
+     * cấu hình trừ DB_* về rỗng, tức giá trị mặc định của AppProperties. Đặt ngay sau @TestPropertySource để test nào cần
+     * giá trị riêng vẫn ghi đè được.
+     */
+    private static void isolateFromDeveloperEnv(org.springframework.core.env.MutablePropertySources sources) {
+        java.util.Map<String, Object> blank = new java.util.HashMap<>();
+        for (String key : APP_KEYS) blank.put(key, "");
+        var source = new org.springframework.core.env.MapPropertySource("testIsolation", blank);
+        String inlined = "Inlined Test Properties";
+        if (sources.contains(inlined)) sources.addAfter(inlined, source);
+        else sources.addFirst(source);
+    }
+
+    private static final java.util.List<String> APP_KEYS = java.util.List.of("JWT_SECRET", "CLIENT_ORIGIN", "SMS_PROVIDER",
+            "EMAIL_PROVIDER", "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "MAIL_FROM", "EMAIL_DEV_CODE", "FIREBASE_PROJECT_ID",
+            "FIREBASE_API_KEY", "FIREBASE_AUTH_DOMAIN", "FIREBASE_APP_ID", "FIREBASE_AUTH_EMULATOR_HOST", "FIREBASE_TEST_NUMBERS_ONLY",
+            "SEED_ADMIN_PHONE", "SEED_ADMIN_EMAIL", "SEED_ADMIN_NAME", "SEED_ADMIN_PASSWORD", "SEED_RECEPTIONIST_PHONE",
+            "SEED_RECEPTIONIST_EMAIL", "SEED_RECEPTIONIST_NAME", "SEED_RECEPTIONIST_PASSWORD");
 }
