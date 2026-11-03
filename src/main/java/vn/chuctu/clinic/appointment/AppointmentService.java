@@ -173,16 +173,29 @@ public class AppointmentService {
      * (người dùng, tiếp tân hay tự huỷ) thì chỉ một bên nhả. Phải gọi trong giao dịch.
      */
     private void cancelInternal(Appointment appt, User by, String reason) {
+        cancelInternal(appt, by, reason, false);
+    }
+
+    /** onlyBooked: người dùng tự huỷ chỉ khi phiếu chưa check-in; đã được tiếp nhận hay đang khám thì phải báo tiếp tân. */
+    private void cancelInternal(Appointment appt, User by, String reason, boolean onlyBooked) {
         if ("COMPLETED".equals(appt.getStatus())) throw Errors.conflict("Phiếu khám đã hoàn thành nên không huỷ được.", "NOT_CANCELLABLE");
         if ("CANCELLED".equals(appt.getStatus())) throw Errors.conflict("Phiếu khám này đã được huỷ trước đó.", "NOT_CANCELLABLE");
+        if (onlyBooked && !"BOOKED".equals(appt.getStatus())) throw notSelfCancellable();
         LocalDateTime now = Tx.utc(clock.instant());
+        String statusCondition = onlyBooked ? "status = 'BOOKED'" : "status IN (" + ACTIVE_LIST + ")";
         int changed = jdbc.update("UPDATE appointments SET status = 'CANCELLED', cancel_reason = ?, cancelled_by = ?, cancelled_at = ?, "
-                + "updated_at = ? WHERE id = ? AND status IN (" + ACTIVE_LIST + ")", isBlank(reason) ? null : reason, by.getId(), now, now,
+                + "updated_at = ? WHERE id = ? AND " + statusCondition, isBlank(reason) ? null : reason, by.getId(), now, now,
                 appt.getId());
+        if (changed != 1 && onlyBooked) throw notSelfCancellable();
         if (changed != 1) throw Errors.conflict("Phiếu khám vừa thay đổi trạng thái, cô chú tải lại trang.", "STALE");
         // Người đã check-in mà huỷ phiếu thì rời hàng đợi và nhả ghế, cùng giao dịch với việc huỷ
         queue.leaveQueue(appt.getId());
         slots.release(appt.getSlotDate(), appt.getSlotStart());
+    }
+
+    private static RuntimeException notSelfCancellable() {
+        return Errors.conflict("Cô chú đã được tiếp nhận tại phòng khám nên không tự huỷ được. Cô chú báo tiếp tân giúp.",
+                "NOT_CANCELLABLE");
     }
 
     /**
@@ -214,7 +227,7 @@ public class AppointmentService {
         tx.run(() -> {
             Appointment appt = appointments.findByIdAndUserId(appointmentId, user.getId())
                     .orElseThrow(() -> Errors.notFound("Không tìm thấy phiếu khám."));
-            cancelInternal(appt, user, reason);
+            cancelInternal(appt, user, reason, true);
             return null;
         });
     }
@@ -242,6 +255,11 @@ public class AppointmentService {
             String issue = slots.timeIssue(date, start, SlotService.COUNTER, clock.instant());
             if (issue != null) throw Errors.badRequest(issue, Map.of("fields", Map.of("slotStart", issue)), "SLOT_UNAVAILABLE");
             if (patient.isLocked()) throw Errors.forbidden("Hồ sơ đang bị khoá nên không đặt lịch được.");
+            // Sang ngày khác thì như đặt mới: bệnh nhân không được có hai phiếu còn hiệu lực cùng ngày
+            if (!old.getSlotDate().equals(date)
+                    && appointments.existsByPatientIdAndSlotDateAndStatusIn(patient.getId(), date, Constants.ACTIVE_STATUSES)) {
+                throw Errors.conflict(patient.getFullName() + " đã có phiếu khám trong ngày này.", "ALREADY_BOOKED");
+            }
 
             // Giữ chỗ khung mới trước, rồi mới huỷ phiếu cũ: khung mới đã đầy thì giao dịch quay lui, phiếu cũ còn nguyên
             if (!slots.reserve(date, start)) {

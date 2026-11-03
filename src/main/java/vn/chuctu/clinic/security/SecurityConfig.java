@@ -51,6 +51,7 @@ public class SecurityConfig {
     SecurityFilterChain securityFilterChain(HttpSecurity http, AppProperties config, JsonMapper mapper, JsonErrorWriter errors,
             SessionService sessions, UserRepository users) throws Exception {
         var cors = new CorsHeadersFilter(config.clientOrigin);
+        var originCheck = new OriginCheckFilter(config.clientOrigin, errors);
         var bodyLimit = new BodyLimitFilter(mapper, errors);
         var session = new SessionFilter(sessions, users, errors);
         http.csrf(AbstractHttpConfigurer::disable)
@@ -61,7 +62,8 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .headers(h -> h.defaultsDisabled().addHeaderWriter(new StaticHeadersWriter(HELMET_HEADERS)))
                 .addFilterAfter(cors, HeaderWriterFilter.class)
-                .addFilterAfter(bodyLimit, CorsHeadersFilter.class)
+                .addFilterAfter(originCheck, CorsHeadersFilter.class)
+                .addFilterAfter(bodyLimit, OriginCheckFilter.class)
                 .addFilterAfter(session, BodyLimitFilter.class)
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/api/me/**").access(roles("USER"))

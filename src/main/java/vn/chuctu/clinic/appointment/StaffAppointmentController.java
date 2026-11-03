@@ -100,8 +100,8 @@ public class StaffAppointmentController {
         User staff = currentUser.require();
         Body body = Body.of(json);
         var form = AppointmentForms.counterBooking(body);
-        // Ngoài giờ nhận bệnh thì báo trước, không tạo phiếu rồi mới lỗi ở bước check-in
-        if (form.checkInNow()) queue.assertReceivingTime();
+        // Không phải hôm nay hay ngoài giờ nhận bệnh thì báo trước, không tạo phiếu rồi mới lỗi ở bước check-in
+        if (form.checkInNow()) queue.assertCanCheckInOn(form.request().slotDate());
         Appointment appt = appointments.counterBook(staff, form.request());
         if (form.checkInNow()) queue.checkIn(staff, appt.getId());
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("appointment", appointments.getStaffAppointment(appt.getId())));

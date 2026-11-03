@@ -116,7 +116,7 @@ Chép `.env.example` thành `.env`. Tên biến giữ như bản Node, trừ `MO
 | `DB_URL` | Địa chỉ JDBC MySQL, dạng `jdbc:mysql://host:3306/chuctu`. Kiểm thử và chế độ demo tự đổi tên database trong URL này. |
 | `DB_USERNAME`, `DB_PASSWORD` | Tài khoản MySQL (tạo bằng `scripts/setup-db.sql`). |
 | `JWT_SECRET` | Khoá ký phiên đăng nhập. Khi chạy production phải là chuỗi ngẫu nhiên, ít nhất 32 ký tự. |
-| `CLIENT_ORIGIN` | Địa chỉ frontend được gọi API (CORS); nhiều địa chỉ thì ngăn bằng dấu phẩy. |
+| `CLIENT_ORIGIN` | Địa chỉ frontend được gọi API (CORS); nhiều địa chỉ thì ngăn bằng dấu phẩy. Cũng dùng để chống CSRF: yêu cầu thay đổi dữ liệu từ trang có Origin khác các địa chỉ này và khác tên miền của server bị từ chối 403. Frontend khác địa chỉ với backend thì phải có tên ở đây. |
 | `SEED_ADMIN_*`, `SEED_RECEPTIONIST_*` | Tài khoản tạo sẵn khi nạp dữ liệu (số điện thoại, email, tên, mật khẩu), chỉ tạo nếu chưa có. Production bắt buộc `SEED_ADMIN_PASSWORD`. |
 | `SMS_PROVIDER` | `console` (in mã ra log) hoặc `firebase` (Firebase Phone Auth, xem bên dưới). |
 | `EMAIL_PROVIDER` | Gửi mã qua email cho quên mật khẩu và đổi email của nhân viên: `console` (in mã ra log, khi phát triển mã hiện luôn trên hộp thoại; production báo "liên hệ quản trị viên") hoặc `smtp` (gửi thật). |

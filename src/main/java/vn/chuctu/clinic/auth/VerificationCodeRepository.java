@@ -33,13 +33,18 @@ public interface VerificationCodeRepository extends JpaRepository<VerificationCo
     int expireOpenCodes(@Param("phone") String phone, @Param("purpose") String purpose, @Param("now") Instant now);
 
     /**
-     * Cộng một lần nhập sai. Luôn chạy trong giao dịch riêng, commit ngay: request sau đó trả lỗi (hay đang nằm trong
-     * một giao dịch bị rollback) cũng không làm mất lần nhập sai.
+     * Giữ một lượt nhập trước khi so mã: chỉ cộng khi còn lượt (attempts < max), trả 0 nếu đã hết. Lệnh UPDATE có điều
+     * kiện nên nhiều yêu cầu cùng lúc không vượt quá max lần so mã. Luôn chạy trong giao dịch riêng, commit ngay: request
+     * sau đó trả lỗi (hay đang nằm trong một giao dịch bị rollback) cũng không làm mất lượt đã dùng.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Modifying
-    @Query("update VerificationCode c set c.attempts = c.attempts + 1 where c.id = :id")
-    int addFailedAttempt(@Param("id") Long id);
+    @Query("update VerificationCode c set c.attempts = c.attempts + 1 where c.id = :id and c.attempts < :max")
+    int claimAttempt(@Param("id") Long id, @Param("max") int max);
+
+    /** Số lượt đã dùng hiện tại (đọc lại sau claimAttempt để báo số lần còn lại). */
+    @Query("select c.attempts from VerificationCode c where c.id = :id")
+    int attemptsOf(@Param("id") Long id);
 
     /** Đánh dấu đã dùng; trả 0 nếu có request khác dùng trước. */
     @Transactional

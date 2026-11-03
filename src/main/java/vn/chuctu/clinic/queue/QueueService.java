@@ -124,9 +124,18 @@ public class QueueService {
         }
     }
 
-    /** Kiểm tra giờ nhận bệnh theo đồng hồ nghiệp vụ, cho đặt hộ kèm check-in ngay. */
-    public void assertReceivingTime() {
-        assertReceivingTime(businessClock.now());
+    /**
+     * Đặt hộ kèm check-in ngay: kiểm tra trước khi tạo phiếu đúng các điều kiện ngày và giờ mà checkIn sẽ kiểm, để không tạo
+     * phiếu rồi mới lỗi ở bước check-in (phiếu thừa vẫn giữ chỗ).
+     */
+    public void assertCanCheckInOn(LocalDate slotDate) {
+        Instant now = businessClock.now();
+        if (!slotDate.equals(VnTime.today(now))) throw wrongDay();
+        assertReceivingTime(now);
+    }
+
+    private static RuntimeException wrongDay() {
+        return Errors.conflict("Phiếu khám không thuộc ngày hôm nay. Đổi giờ khám sang hôm nay trước khi check-in.", "WRONG_DAY");
     }
 
     /**
@@ -140,9 +149,7 @@ public class QueueService {
         if ("CANCELLED".equals(appt.getStatus())) throw Errors.conflict("Phiếu khám đã huỷ nên không check-in được.", "CANCELLED");
         if (!"BOOKED".equals(appt.getStatus())) throw Errors.conflict("Phiếu khám này đã được check-in.", "ALREADY_CHECKED_IN");
         LocalDate today = VnTime.today(now);
-        if (!appt.getSlotDate().equals(today)) {
-            throw Errors.conflict("Phiếu khám không thuộc ngày hôm nay. Đổi giờ khám sang hôm nay trước khi check-in.", "WRONG_DAY");
-        }
+        if (!appt.getSlotDate().equals(today)) throw wrongDay();
         assertReceivingTime(now);
         Patient patient = patients.findById(appt.getPatientId()).orElse(null);
         if (patient != null && patient.isLocked()) throw Errors.forbidden("Hồ sơ đang bị khoá nên không ghi nhận lượt khám mới.");

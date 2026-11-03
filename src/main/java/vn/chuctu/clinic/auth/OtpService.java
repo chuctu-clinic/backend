@@ -130,15 +130,15 @@ public class OtpService {
         VerificationCode doc = codes
                 .findFirstByPhoneAndPurposeAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDescIdDesc(phone, purpose, now)
                 .orElseThrow(() -> Errors.badRequest(CODE_EXPIRED, null, "CODE_EXPIRED"));
-        if (doc.getAttempts() >= Rules.OTP_MAX_ATTEMPTS) {
+        // Giữ lượt trước rồi mới so mã: hết lượt thì khoá, kể cả khi nhiều yêu cầu dò mã đến cùng lúc
+        if (doc.getAttempts() >= Rules.OTP_MAX_ATTEMPTS || codes.claimAttempt(doc.getId(), Rules.OTP_MAX_ATTEMPTS) == 0) {
             throw Errors.badRequest("Cô chú đã nhập sai quá nhiều lần. Vui lòng bấm \"Gửi lại mã\" để nhận mã mới.", null, "CODE_LOCKED");
         }
 
         byte[] expected = doc.getCodeHash().getBytes(StandardCharsets.UTF_8);
         byte[] actual = hashCode(phone, purpose, code).getBytes(StandardCharsets.UTF_8);
         if (!MessageDigest.isEqual(expected, actual)) {
-            codes.addFailedAttempt(doc.getId());
-            int left = Rules.OTP_MAX_ATTEMPTS - (doc.getAttempts() + 1);
+            int left = Rules.OTP_MAX_ATTEMPTS - codes.attemptsOf(doc.getId());
             throw Errors.badRequest(
                     left > 0 ? "Mã xác nhận chưa đúng. Cô chú còn " + left + " lần nhập."
                             : "Mã xác nhận chưa đúng. Cô chú bấm \"Gửi lại mã\" để nhận mã mới.",

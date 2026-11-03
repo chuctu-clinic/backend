@@ -70,3 +70,13 @@ Bản Java chạy profile demo ở `127.0.0.1:4100`, frontend (Vite) ở `127.0.
 - Bước 6, Firebase thật (`SMS_PROVIDER=firebase`, `FIREBASE_TEST_NUMBERS_ONLY=1`): đăng ký bằng số thử trên Firebase Console, nhập mã thử, server kiểm ID token thật của Google, tạo tài khoản thành công.
 - Bước 6, SMTP Gmail thật: quên mật khẩu tài khoản nội bộ, email chứa mã 6 số đến được hộp thư, nhập mã, đặt mật khẩu mới, đăng nhập lại bằng mật khẩu mới thành công.
   - Lần thử đầu thất bại vì `MAIL_FROM` chỉ có tên hiển thị, không có địa chỉ (`Local address contains control or whitespace`). Bản Java cần `MAIL_FROM` là địa chỉ, hoặc dạng `Tên <địa chỉ>`. Sửa `.env` xong thì gửi được.
+
+## 5. Khác bản Node do sửa lỗi sau rà soát (03/11/2026)
+
+Các lỗi này có cả ở bản Node, bản Java sửa nên hành vi khác Node ở đúng các điểm sau:
+
+- **Chống CSRF**: POST, PUT, PATCH, DELETE có header `Origin` thì Origin phải nằm trong `CLIENT_ORIGIN` hoặc cùng tên miền với server, không thì trả 403 `FORBIDDEN`. Yêu cầu không có `Origin` (curl, ứng dụng) không bị ảnh hưởng.
+- **Người dùng tự huỷ phiếu**: chỉ khi phiếu chưa check-in. Đã check-in hoặc đang khám thì trả 409 `NOT_CANCELLABLE`, tiếp tân vẫn huỷ được.
+- **Đổi giờ sang ngày khác**: bệnh nhân đã có phiếu còn hiệu lực ngày đó thì trả 409 `ALREADY_BOOKED`, như khi đặt mới.
+- **Đặt hộ kèm check-in ngay**: ngày khám không phải hôm nay thì trả 409 `WRONG_DAY` trước khi tạo phiếu, không để lại phiếu thừa.
+- **Giới hạn nhập sai mã**: mỗi lần nhập được giữ lượt bằng một lệnh UPDATE có điều kiện trước khi so mã. Nhiều yêu cầu dò mã cùng lúc vẫn chỉ được so tối đa 5 lần.
