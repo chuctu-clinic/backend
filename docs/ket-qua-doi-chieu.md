@@ -1,5 +1,7 @@
 # Kết quả đối chiếu bản Java với bản Node
 
+> **Ghi chú (04/11/2026):** tài liệu này viết khi bản Node.js còn ở `backend/` và bản Spring Boot ở `backend-java/`. Nay bản Node đã bị xoá, bản Spring Boot đổi tên thành `backend/`. Hai script so sánh với bản Node (`check-test-parity.mjs`, `compare-responses.mjs`) cũng đã được bỏ vì không còn bản Node để chạy; kết quả của chúng giữ lại ở đây.
+
 Ngày chạy: 2026-11-03. Bản Node (`backend/`) là chuẩn. Hai script nằm trong `scripts/`.
 
 ## 1. Đối chiếu tên test (`scripts/check-test-parity.mjs`)
