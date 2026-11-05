@@ -341,7 +341,43 @@ public class PatientService {
                         Map.of("duplicates", duplicates.stream().map(this::toPublic).collect(Collectors.toList())));
             }
         }
+        // Số này là tài khoản người dùng chưa có hồ sơ chính chủ: hồ sơ mới thành hồ sơ chính chủ của tài khoản đó,
+        // để người dùng thấy phiếu khám và kết quả trên website (không tạo hồ sơ mồ côi)
+        User owner = accountWithoutSelfProfile(data.phone().get());
+        if (owner != null) {
+            Patient linked = createPatient(input(data), owner.getId(), SELF, staff.getId());
+            syncSelfProfile(owner);
+            return linked;
+        }
         return createPatient(input(data), null, null, staff.getId());
+    }
+
+    /** Tài khoản người dùng dùng số này mà chưa có hồ sơ chính chủ; null nếu không có. */
+    private User accountWithoutSelfProfile(String phone) {
+        if (phone == null || phone.isEmpty()) return null;
+        return users.findByPhone(phone).filter(u -> "USER".equals(u.getRole()) && !hasOwnSelfProfile(u.getId())).orElse(null);
+    }
+
+    /**
+     * Bảo đảm tài khoản người dùng có hồ sơ chính chủ (đổi vai trò nội bộ sang Người dùng). Có hồ sơ chưa gắn tài khoản
+     * cùng số điện thoại (tiếp tân tạo trước đó) thì nối hồ sơ cũ nhất vào tài khoản, giữ nguyên lịch sử khám; không có
+     * thì tạo mới. Thông tin tài khoản chép sang hồ sơ như khi tài khoản đổi thông tin.
+     */
+    @Transactional
+    public Patient ensureSelfProfile(User user) {
+        Patient self = findSelfProfile(user.getId());
+        if (self != null) return self;
+        Patient orphan = patients.findFirstByPhoneAndUserIdIsNullOrderByIdAsc(user.getPhone()).orElse(null);
+        if (orphan != null) {
+            orphan.setUserId(user.getId());
+            orphan.setRelationship(SELF);
+            patients.saveAndFlush(orphan);
+        } else {
+            createPatient(new PatientInput(user.getFullName(), user.getDob(), null, user.getGender(), user.getPhone(), user.getAddress(),
+                    null, null), user.getId(), SELF, user.getId());
+            patients.flush();
+        }
+        return syncSelfProfile(user);
     }
 
     @Transactional

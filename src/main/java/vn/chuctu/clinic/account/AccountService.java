@@ -225,7 +225,10 @@ public class AccountService {
                 }
                 if (needsEmail && !has(fresh.getEmail())) fresh.setEmail(email);
                 fresh.setRole(role);
-                return users.saveAndFlush(fresh);
+                User saved = users.saveAndFlush(fresh);
+                // Tài khoản nội bộ không có hồ sơ khám; chuyển sang Người dùng thì phải có hồ sơ chính chủ như tài khoản mới
+                if ("USER".equals(role)) patients.ensureSelfProfile(saved);
+                return saved;
             });
         } catch (DataIntegrityViolationException e) {
             throw clash(e, null, needsEmail ? email : null, id);

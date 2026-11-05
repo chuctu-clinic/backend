@@ -25,6 +25,9 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
 
     List<Patient> findTop10ByPhoneOrderByIdAsc(String phone);
 
+    /** Hồ sơ cũ nhất dùng số này mà chưa gắn tài khoản nào. */
+    Optional<Patient> findFirstByPhoneAndUserIdIsNullOrderByIdAsc(String phone);
+
     List<Patient> findTop10ByPhoneAndIdNotOrderByIdAsc(String phone, Long id);
 
     /**
