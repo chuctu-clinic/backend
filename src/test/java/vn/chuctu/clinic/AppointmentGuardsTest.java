@@ -41,8 +41,14 @@ class AppointmentGuardsTest extends IntegrationTest {
         var user = client().registerUser();
         long id = todayAppointmentOf(user.selfPatientId());
         var staff = client().staff();
-        staff.put("/api/staff/queue/auto-invite", body("enabled", false)).expectStatus(200);
+        clinicStaff().put("/api/staff/queue/auto-invite", body("enabled", false)).expectStatus(200);
+        assertThat(user.get("/api/me/appointments/" + id).expectStatus(200).json().at("/appointment/checkedInAt").isNull()).isTrue();
         staff.post("/api/staff/appointments/" + id + "/checkin", body()).expectStatus(200);
+
+        // Người dùng vẫn thấy "Đã đặt lịch" (BR.17) nhưng biết đã được tiếp nhận
+        var mine = user.get("/api/me/appointments/" + id).expectStatus(200).json().get("appointment");
+        assertThat(mine.get("status").asString()).isEqualTo("BOOKED");
+        assertThat(mine.get("checkedInAt").isNull()).isFalse();
 
         var res = user.post("/api/me/appointments/" + id + "/cancel", body()).expectStatus(409).json();
         assertThat(res.at("/error/code").asString()).isEqualTo("NOT_CANCELLABLE");
@@ -55,9 +61,11 @@ class AppointmentGuardsTest extends IntegrationTest {
         var user = client().registerUser();
         long id = todayAppointmentOf(user.selfPatientId());
         var staff = client().staff();
-        staff.put("/api/staff/queue/auto-invite", body("enabled", false)).expectStatus(200);
+        clinicStaff().put("/api/staff/queue/auto-invite", body("enabled", false)).expectStatus(200);
         staff.post("/api/staff/appointments/" + id + "/checkin", body()).expectStatus(200);
-        staff.post("/api/staff/queue/invite", body()).expectStatus(200);
+        callIn(clinicStaff(), id);
+        orderTreatment(clinicStaff(), id);
+        clinicStaff().post("/api/staff/treatment/invite", body()).expectStatus(200);
         assertThat(status(id)).isEqualTo("IN_PROGRESS");
 
         user.post("/api/me/appointments/" + id + "/cancel", body()).expectStatus(409);

@@ -188,7 +188,7 @@ public class AppointmentService {
                 appt.getId());
         if (changed != 1 && onlyBooked) throw notSelfCancellable();
         if (changed != 1) throw Errors.conflict("Phiếu khám vừa thay đổi trạng thái, cô chú tải lại trang.", "STALE");
-        // Người đã check-in mà huỷ phiếu thì rời hàng đợi và nhả ghế, cùng giao dịch với việc huỷ
+        // Người đã check-in mà huỷ phiếu thì rời hàng đợi và nhả chỗ, cùng giao dịch với việc huỷ
         queue.leaveQueue(appt.getId());
         slots.release(appt.getSlotDate(), appt.getSlotStart());
     }
@@ -242,7 +242,7 @@ public class AppointmentService {
             cancelInternal(appt, staff, reason);
             return appt;
         });
-        // Người đang khám bị huỷ thì ghế trống: mời người kế tiếp (nếu bật tự động mời), sau khi việc huỷ đã commit
+        // Người đang khám bị huỷ thì chỗ trống: mời người kế tiếp (nếu bật tự động mời), sau khi việc huỷ đã commit
         if ("IN_PROGRESS".equals(cancelled.getStatus())) queue.fillAfterCompletion(cancelled.getSlotDate());
     }
 
@@ -298,6 +298,8 @@ public class AppointmentService {
         out.put("slotStart", appt.getSlotStart());
         out.put("expectedTime", appt.getExpectedTime());
         out.put("status", forUser ? userStatus(appt.getStatus()) : appt.getStatus());
+        // Người dùng vẫn chỉ thấy ba trạng thái (BR.17); kèm giờ tiếp nhận để trang phiếu biết đã check-in, không mời huỷ nữa
+        if (forUser) out.put("checkedInAt", checkedInAt(appt));
         out.put("source", appt.getSource());
         out.put("cancelReason", appt.getCancelReason());
         out.put("cancelledAt", appt.getCancelledAt());
@@ -305,6 +307,14 @@ public class AppointmentService {
         out.put("createdAt", appt.getCreatedAt());
         out.put("patient", patient == null ? null : patientView(patient, forUser, false));
         return out;
+    }
+
+    /** Giờ check-in của phiếu đang ở phòng khám (đã check-in hoặc đang khám); null với trạng thái khác. */
+    private java.time.Instant checkedInAt(Appointment appt) {
+        if (!"CHECKED_IN".equals(appt.getStatus()) && !"IN_PROGRESS".equals(appt.getStatus())) return null;
+        LocalDateTime at = jdbc.query("SELECT check_in_time FROM checkins WHERE appointment_id = ? ORDER BY id DESC LIMIT 1",
+                rs -> rs.next() ? rs.getObject(1, LocalDateTime.class) : null, appt.getId());
+        return at == null ? null : at.toInstant(java.time.ZoneOffset.UTC);
     }
 
     /** Người dùng không thấy số điện thoại trong danh sách; phiếu đầy đủ để in thì kèm ngày sinh, giới tính, địa chỉ. */

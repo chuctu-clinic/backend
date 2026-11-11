@@ -73,7 +73,9 @@ class UserAppointmentsTest extends IntegrationTest {
         staff.post("/api/staff/appointments/" + apptId + "/checkin", body()).expectStatus(200);
 
         assertThat(hasResult(user)).isFalse();
-        staff.post("/api/staff/appointments/" + apptId + "/record", body("diagnosis", "Đau vai")).expectStatus(201);
+        var doctor = clinicStaff();
+        callIn(doctor, apptId);
+        doctor.post("/api/staff/appointments/" + apptId + "/record", body("diagnosis", "Đau vai")).expectStatus(201);
         assertThat(hasResult(user)).isTrue();
         assertThat(user.get("/api/me/appointments/" + apptId).expectStatus(200).json().get("appointment").get("hasResult").booleanValue())
                 .isTrue();

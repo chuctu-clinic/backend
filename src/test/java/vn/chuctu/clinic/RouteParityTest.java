@@ -69,19 +69,23 @@ class RouteParityTest extends IntegrationTest {
             "POST /api/staff/appointments/{}/cancel",
             "POST /api/staff/appointments/{}/checkin",
             "POST /api/staff/appointments/{}/undo-checkin",
-            "POST /api/staff/appointments/{}/enter",
-            "POST /api/staff/appointments/{}/undo-enter",
             "GET /api/staff/queue",
-            "POST /api/staff/queue/invite",
-            "POST /api/staff/queue/{}/undo-enter",
             "PUT /api/staff/queue/auto-invite",
+            // Quy trình bác sĩ và kỹ thuật viên (không có ở bản Node)
+            "POST /api/staff/exam/call-next",
+            "POST /api/staff/exam/{}/call",
+            "POST /api/staff/exam/{}/undo-call",
+            "POST /api/staff/exam/{}/order",
+            "POST /api/staff/exam/{}/undo-order",
+            "POST /api/staff/treatment/invite",
+            "POST /api/staff/treatment/{}/seat",
+            "POST /api/staff/treatment/{}/undo-seat",
+            "POST /api/staff/treatment/{}/report",
             "GET /api/staff/patients",
-            "GET /api/staff/patients/duplicates",
             "POST /api/staff/patients",
             "GET /api/staff/patients/{}",
             "PATCH /api/staff/patients/{}",
             "POST /api/staff/appointments/{}/record",
-            "GET /api/staff/records/{}",
             "PUT /api/staff/records/{}",
             // admin.routes.js (/api/admin)
             "GET /api/admin/dashboard",
@@ -125,9 +129,9 @@ class RouteParityTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("[java] đủ 77 endpoint: đọc RequestMappingHandlerMapping, so với danh sách ghi cứng từ routes/*.routes.js")
-    void du77Endpoint() {
-        assertThat(NODE_ROUTES).hasSize(77).doesNotHaveDuplicates();
+    @DisplayName("[java] đủ 80 endpoint: đọc RequestMappingHandlerMapping, so với danh sách ghi cứng từ routes/*.routes.js cộng quy trình bác sĩ và kỹ thuật viên")
+    void du80Endpoint() {
+        assertThat(NODE_ROUTES).hasSize(80).doesNotHaveDuplicates();
         Set<String> expected = new TreeSet<>(NODE_ROUTES);
         Set<String> actual = javaRoutes();
 
@@ -137,7 +141,7 @@ class RouteParityTest extends IntegrationTest {
         extra.removeAll(expected);
         assertThat(missing).as("Node có nhưng Java thiếu").isEmpty();
         assertThat(extra).as("Java có nhưng Node không có").isEmpty();
-        assertThat(actual).hasSize(77);
+        assertThat(actual).hasSize(80);
     }
 
     @Test

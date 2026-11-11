@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,7 +31,6 @@ import vn.chuctu.clinic.security.CurrentUser;
 @RequestMapping("/api/staff/patients")
 public class StaffPatientController {
 
-    private static final Pattern ID = Pattern.compile("^[1-9]\\d{0,18}$");
 
     private final PatientService patients;
     private final AppointmentService appointments;
@@ -72,21 +70,6 @@ public class StaffPatientController {
         out.put("page", paging.page());
         out.put("limit", paging.limit());
         return out;
-    }
-
-    @GetMapping("/duplicates")
-    Map<String, Object> duplicates(@RequestParam(required = false) String phone, @RequestParam(required = false) String excludeId) {
-        Long exclude = null;
-        if (excludeId != null && !excludeId.isEmpty()) {
-            // Mã không đúng dạng là CastError của Mongoose: 404
-            if (!ID.matcher(excludeId).matches()) throw Errors.notFound();
-            try {
-                exclude = Long.parseLong(excludeId);
-            } catch (NumberFormatException e) {
-                throw Errors.notFound();
-            }
-        }
-        return Map.of("items", patients.findDuplicatesByPhone(phone, exclude).stream().map(patients::toPublic).toList());
     }
 
     @PostMapping

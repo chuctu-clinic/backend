@@ -83,6 +83,8 @@ public class StaffAppointmentController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("appointment", appointments.getStaffAppointment(id));
         out.put("record", records.getRecordByAppointment(id));
+        // Lượt khám: khám sơ bộ, chỉ định và báo cáo điều trị (để bác sĩ kết luận)
+        out.put("visit", queue.visitByAppointment(id));
         return out;
     }
 

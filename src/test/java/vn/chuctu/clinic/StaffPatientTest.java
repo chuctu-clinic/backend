@@ -134,22 +134,6 @@ class StaffPatientTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("[java] tra số điện thoại trùng, bỏ qua hồ sơ đang xem")
-    void javaTraSoTrung() {
-        var staff = client().staff();
-        Patient a = newPatient();
-        Patient b = newPatient("CT-BN-TEST-2", "Người Thứ Hai", "0916000001");
-        newPatient("CT-BN-TEST-3", "Số Khác", "0916000003");
-
-        assertThat(staff.get("/api/staff/patients/duplicates?phone=0916000001").expectStatus(200).json().get("items").size()).isEqualTo(2);
-        var excluded = staff.get("/api/staff/patients/duplicates?phone=0916000001&excludeId=" + a.getId()).expectStatus(200).json().get("items");
-        assertThat(excluded.size()).isEqualTo(1);
-        assertThat(excluded.get(0).get("id").stringValue()).isEqualTo(String.valueOf(b.getId()));
-        assertThat(staff.get("/api/staff/patients/duplicates").expectStatus(200).json().get("items").size()).isZero();
-        staff.get("/api/staff/patients/duplicates?phone=0916000001&excludeId=khong-phai-id").expectStatus(404);
-    }
-
-    @Test
     @DisplayName("[java] danh sách phân trang, lọc theo khoá, kèm ngày khám gần nhất")
     void javaDanhSach() {
         var staff = client().staff();
