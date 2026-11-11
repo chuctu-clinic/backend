@@ -12,10 +12,26 @@ public final class Constants {
 
     public record ReceivingHours(String open, String close, String label, String noShowCancel) {}
 
-    public static final List<String> ROLES = List.of("USER", "RECEPTIONIST", "ADMIN");
-    public static final List<String> STAFF_ROLES = List.of("RECEPTIONIST", "ADMIN");
-    public static final Map<String, String> ROLE_LABELS =
-            ordered("USER", "Người dùng", "RECEPTIONIST", "Tiếp tân", "ADMIN", "Quản trị viên");
+    public static final List<String> ROLES = List.of("USER", "RECEPTIONIST", "DOCTOR", "TECHNICIAN", "ADMIN");
+    public static final List<String> STAFF_ROLES = List.of("RECEPTIONIST", "DOCTOR", "TECHNICIAN", "ADMIN");
+    public static final Map<String, String> ROLE_LABELS = ordered("USER", "Người dùng", "RECEPTIONIST", "Tiếp tân", "DOCTOR", "Bác sĩ",
+            "TECHNICIAN", "Kỹ thuật viên", "ADMIN", "Quản trị viên");
+
+    /** Kỹ thuật bác sĩ chỉ định cho kỹ thuật viên (cột checkins.treatment_kinds). */
+    public static final Map<String, String> TREATMENT_KINDS = ordered(
+            "CHAM_CUU", "Châm cứu",
+            "XOA_BOP_BAM_HUYET", "Xoa bóp — bấm huyệt",
+            "VAT_LY_TRI_LIEU", "Vật lý trị liệu",
+            "KHAC", "Khác");
+
+    /** Trạng thái của một lượt check-in, theo thứ tự quy trình khám (REVERTED: đã hoàn tác hoặc huỷ). */
+    public static final Map<String, String> VISIT_STAGE_LABELS = ordered(
+            "WAITING", "Chờ khám",
+            "EXAMINING", "Đang khám",
+            "WAITING_TREATMENT", "Chờ điều trị",
+            "IN_ROOM", "Đang điều trị",
+            "WAITING_CONCLUSION", "Chờ kết luận",
+            "COMPLETED", "Đã hoàn thành");
 
     public static final Map<String, String> GENDERS = ordered("NAM", "Nam", "NU", "Nữ", "KHAC", "Khác");
 
@@ -45,7 +61,7 @@ public final class Constants {
     public static final Map<String, String> STATUS_LABELS = ordered(
             "BOOKED", "Chưa đến",
             "CHECKED_IN", "Đã check-in",
-            "IN_PROGRESS", "Đã vào khám",
+            "IN_PROGRESS", "Đang khám",
             "COMPLETED", "Đã hoàn thành",
             "CANCELLED", "Đã huỷ");
     public static final Map<String, String> USER_STATUS_LABELS =

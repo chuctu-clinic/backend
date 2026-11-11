@@ -47,6 +47,8 @@ public final class AppProperties {
     public final Firebase firebase;
     public final SeedAccount seedAdmin;
     public final SeedAccount seedReceptionist;
+    public final SeedAccount seedDoctor;
+    public final SeedAccount seedTechnician;
     public final String dbUrl;
     public final String dbUsername;
     public final String dbPassword;
@@ -74,6 +76,8 @@ public final class AppProperties {
                 !isProd && "1".equals(source.getProperty("FIREBASE_TEST_NUMBERS_ONLY")));
         seedAdmin = seedAccount("ADMIN", "0900000001", "admin@chuctu.vn", "Quản trị viên");
         seedReceptionist = seedAccount("RECEPTIONIST", "0900000002", "letan@chuctu.vn", "Trần Thị Thu");
+        seedDoctor = seedAccount("DOCTOR", "0900000003", "bacsi@chuctu.vn", "Nguyễn Văn An");
+        seedTechnician = seedAccount("TECHNICIAN", "0900000004", "ktv@chuctu.vn", "Phạm Thị Hoa");
         dbUrl = get("DB_URL", "");
         dbUsername = get("DB_USERNAME", "");
         dbPassword = get("DB_PASSWORD", "");

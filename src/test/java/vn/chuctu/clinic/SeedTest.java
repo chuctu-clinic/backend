@@ -101,7 +101,7 @@ class SeedTest extends IntegrationTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM appointments a WHERE a.status <> 'CANCELLED' AND NOT EXISTS "
                 + "(SELECT 1 FROM slot_counters s WHERE s.slot_date = a.slot_date AND s.start_time = a.slot_start)", Long.class))
                 .isZero();
-        // Khung 9:00 ngày mai đã đủ chỗ; hàng đợi có 4 người trong phòng, ghế 3 trống
+        // Khung 9:00 ngày mai đã đủ chỗ; hàng đợi có 4 người trong phòng, chỗ 3 trống
         assertThat(jdbc.queryForObject("SELECT `count` FROM slot_counters WHERE start_time = '09:00' AND slot_date = ?",
                 Integer.class, java.time.LocalDate.now(vn.chuctu.clinic.common.VnTime.ZONE).plusDays(1))).isEqualTo(6);
         assertThat(jdbc.queryForList("SELECT seat_no FROM checkins WHERE status = 'IN_ROOM' ORDER BY seat_no", Integer.class))

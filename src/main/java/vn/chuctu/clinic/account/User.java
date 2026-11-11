@@ -53,7 +53,7 @@ public class User {
     @Column(name = "address")
     private String address;
 
-    /** USER | RECEPTIONIST | ADMIN (xem Constants.ROLES). */
+    /** USER | RECEPTIONIST | DOCTOR | TECHNICIAN | ADMIN (xem Constants.ROLES). */
     @Column(name = "role", nullable = false)
     private String role = "USER";
 

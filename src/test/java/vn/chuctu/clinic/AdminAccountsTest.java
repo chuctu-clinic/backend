@@ -267,6 +267,32 @@ class AdminAccountsTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("đổi vai trò sang Bác sĩ, Kỹ thuật viên và ngược lại; tạo thẳng tài khoản Bác sĩ, Kỹ thuật viên")
+    void doiVaiTroBacSiKyThuatVien() {
+        var admin = admin();
+        String receptionist = idOfRole("RECEPTIONIST");
+        for (String role : List.of("DOCTOR", "TECHNICIAN", "RECEPTIONIST", "DOCTOR")) {
+            var account = admin.put("/api/admin/accounts/" + receptionist + "/role", body("role", role)).expectStatus(200).json().get("account");
+            assertThat(account.get("role").stringValue()).isEqualTo(role);
+            assertThat(column("role", receptionist)).isEqualTo(role);
+        }
+        // Người dùng lên Kỹ thuật viên: như mọi vai trò nội bộ, cần mật khẩu tạm và email
+        client().registerUser();
+        String user = idOf("0911000001");
+        admin.put("/api/admin/accounts/" + user + "/role", body("role", "TECHNICIAN", "tempPassword", TEMP, "email", "ktv2@chuctu.vn"))
+                .expectStatus(200);
+        assertThat(column("role", user)).isEqualTo("TECHNICIAN");
+        staffLogin("0911000001", TEMP).expectStatus(200);
+
+        var created = admin.post("/api/admin/accounts", newAccount("role", "DOCTOR", "phone", "0920000009", "email", "bs2@chuctu.vn",
+                "tempPassword", TEMP)).expectStatus(201).json().get("account");
+        assertThat(created.get("role").stringValue()).isEqualTo("DOCTOR");
+        JsonNode counts = admin.get("/api/admin/accounts").expectStatus(200).json().get("roleCounts");
+        assertThat(counts.get("DOCTOR").intValue()).isEqualTo(2);
+        assertThat(counts.get("TECHNICIAN").intValue()).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("đã có mật khẩu nhưng chưa có email thì đổi vai trò chỉ cần nhập email")
     void daCoMatKhauChuaCoEmail() {
         var admin = admin();

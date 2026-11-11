@@ -30,7 +30,7 @@ import vn.chuctu.clinic.queue.Settings;
  * server, nên mở lúc nào cũng có một ngày làm việc "đang diễn ra":
  * <ul>
  * <li>Lịch trong ngày: đủ trạng thái Đã đặt / Đã check-in / Đang khám / Đã hoàn thành / Đã huỷ, cả online lẫn tại quầy.
- * <li>Hàng đợi: 4/5 ghế có người (ghế 3 trống), người chờ nhóm ưu tiên và nhóm thường; tắt tự động mời.
+ * <li>Hàng đợi: 4/5 chỗ có người (chỗ 3 trống), người chờ nhóm ưu tiên và nhóm thường; tắt tự động mời.
  * <li>Hồ sơ bệnh nhân: ~40 hồ sơ, lịch sử khám 2 tháng kèm phiếu kết quả, 1 hồ sơ bị khoá, vài hồ sơ trùng số điện thoại.
  * <li>Các ngày tới: phiếu đã đặt để thử đặt hộ, đổi giờ; khung 9:00 ngày mai đã đủ chỗ.
  * </ul>
@@ -375,7 +375,7 @@ public class DemoClinic {
             makeRecord(appt, checkin, today, receptionist, tpl, pick(HISTORIES));
         }
 
-        // Đang trong phòng khám: ghế 1, 2, 4, 5 (ghế 3 vừa trống)
+        // Đang trong phòng khám: chỗ 1, 2, 4, 5 (chỗ 3 vừa trống)
         int[] seats = {1, 2, 4, 5};
         for (int i = 0; i < seats.length; i++) {
             Who who = i % 2 == 1 ? take.take() : takeOnline.take();
@@ -384,8 +384,12 @@ public class DemoClinic {
             preferred.add(cur);
             String start = freeSlot(today, preferred);
             Appt appt = todayAppt(who, receptionist, today, start, "IN_PROGRESS", pick(SERVICES), null);
-            makeCheckin(appt, today, now.minusMillis((45 + i * 8L) * MIN), who.user() != null ? "PRIORITY" : "NORMAL", "IN_ROOM",
-                    seats[i], now.minusMillis((5 + i * 9L) * MIN), null);
+            long checkinId = makeCheckin(appt, today, now.minusMillis((45 + i * 8L) * MIN), who.user() != null ? "PRIORITY" : "NORMAL",
+                    "IN_ROOM", seats[i], now.minusMillis((5 + i * 9L) * MIN), null);
+            // Người đang ở chỗ điều trị đã được bác sĩ khám sơ bộ và chỉ định
+            jdbc.update("UPDATE checkins SET exam_started_at = ?, prelim_diagnosis = ?, treatment_kinds = ?, treatment_order = ?, ordered_at = ? "
+                    + "WHERE id = ?", Tx.utc(now.minusMillis((25 + i * 9L) * MIN)), "Đau mỏi cổ vai gáy", "CHAM_CUU,XOA_BOP_BAM_HUYET",
+                    "Châm cứu vùng cổ vai, xoa bóp 20 phút", Tx.utc(now.minusMillis((10 + i * 9L) * MIN)), checkinId);
         }
 
         // Đang chờ: 3 người nhóm ưu tiên (đặt trước, đến đúng khung giờ), 3 người nhóm thường (khách đến trực tiếp)
@@ -445,7 +449,7 @@ public class DemoClinic {
             }
         }
 
-        // Ghế 3 trống và còn người chờ: tắt tự động mời để tiếp tân bấm "Mời người kế tiếp"
+        // Chỗ 3 trống và còn người chờ: tắt tự động mời để tiếp tân bấm "Mời người kế tiếp"
         settings.set(QueueService.AUTO_KEY, false);
     }
 

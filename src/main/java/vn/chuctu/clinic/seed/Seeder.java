@@ -156,11 +156,16 @@ public class Seeder {
     public SeedResult run(boolean demo, AppProperties settings) {
         User admin = ensureStaff(settings, settings.seedAdmin, "ADMIN", "SEED_ADMIN", true);
         User receptionist = ensureStaff(settings, settings.seedReceptionist, "RECEPTIONIST", "SEED_RECEPTIONIST", false);
+        // Bác sĩ và Kỹ thuật viên mẫu: không tạo khi chạy kiểm thử (dữ liệu nền của test chỉ gồm Admin và Tiếp tân)
+        User doctor = settings.isTest ? null : ensureStaff(settings, settings.seedDoctor, "DOCTOR", "SEED_DOCTOR", false);
+        User technician = settings.isTest ? null : ensureStaff(settings, settings.seedTechnician, "TECHNICIAN", "SEED_TECHNICIAN", false);
         seedPages(admin);
         if (demo) seedDemo(admin, receptionist);
         // Mật khẩu chỉ in ra khi là mật khẩu mẫu (phát triển), không in mật khẩu đặt trong biến môi trường
         log.info("Dữ liệu sẵn sàng. Admin: {}{}{}", login(settings.seedAdmin),
-                receptionist != null ? ", Tiếp tân: " + login(settings.seedReceptionist) : "",
+                (receptionist != null ? ", Tiếp tân: " + login(settings.seedReceptionist) : "")
+                        + (doctor != null ? ", Bác sĩ: " + login(settings.seedDoctor) : "")
+                        + (technician != null ? ", Kỹ thuật viên: " + login(settings.seedTechnician) : ""),
                 demo ? ". Người dùng mẫu: 0912345678." : ".");
         return new SeedResult(admin, receptionist, jdbc.queryForObject("SELECT COUNT(*) FROM patients", Long.class));
     }

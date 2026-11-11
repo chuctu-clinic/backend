@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Set;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderNotFoundException;
 import org.springframework.security.authorization.AuthorizationDecision;
@@ -30,6 +31,8 @@ import vn.chuctu.clinic.common.Errors;
  */
 @Configuration(proxyBeanMethods = false)
 public class SecurityConfig {
+
+    private static final String[] STAFF = {"RECEPTIONIST", "DOCTOR", "TECHNICIAN", "ADMIN"};
 
     private static final String FORBIDDEN_MESSAGE_ATTRIBUTE = SecurityConfig.class.getName() + ".forbiddenMessage";
 
@@ -67,6 +70,17 @@ public class SecurityConfig {
                 .addFilterAfter(session, BodyLimitFilter.class)
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/api/me/**").access(roles("USER"))
+                        // Bác sĩ: khám sơ bộ, chỉ định, lập và sửa phiếu kết quả
+                        .requestMatchers("/api/staff/exam/**").access(roles("DOCTOR", "ADMIN"))
+                        .requestMatchers(HttpMethod.POST, "/api/staff/appointments/*/record").access(roles("DOCTOR", "ADMIN"))
+                        .requestMatchers(HttpMethod.PUT, "/api/staff/records/*").access(roles("DOCTOR", "ADMIN"))
+                        // Kỹ thuật viên: chỗ điều trị và báo cáo điều trị
+                        .requestMatchers("/api/staff/treatment/**", "/api/staff/queue/auto-invite").access(roles("TECHNICIAN", "ADMIN"))
+                        // Mọi nhân viên: xem hàng đợi, phiếu khám, hồ sơ và phiếu kết quả; sửa thông tin tài khoản của mình
+                        .requestMatchers(HttpMethod.GET, "/api/staff/queue", "/api/staff/appointments/*", "/api/staff/records/*",
+                                "/api/staff/patients/*").access(roles(STAFF))
+                        .requestMatchers("/api/staff/account/**").access(roles(STAFF))
+                        // Còn lại của khu nội bộ (lịch trong ngày, check-in, đặt hộ, hồ sơ bệnh nhân): tiếp tân
                         .requestMatchers("/api/staff/**").access(roles("RECEPTIONIST", "ADMIN"))
                         .requestMatchers("/api/admin/**").access(roles("ADMIN"))
                         .anyRequest().permitAll())

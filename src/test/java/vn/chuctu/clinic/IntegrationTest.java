@@ -63,6 +63,26 @@ public abstract class IntegrationTest {
         return client().cookie(SessionService.SESSION_COOKIE, pair.substring(pair.indexOf('=') + 1));
     }
 
+    /**
+     * Tài khoản Quản trị viên mẫu: làm được cả việc của tiếp tân (check-in) lẫn bác sĩ (gọi khám, lập phiếu kết quả), dùng cho
+     * các test chỉ cần đi qua quy trình khám mà không xét phân quyền giữa các vai trò.
+     */
+    protected TestClient clinicStaff() {
+        return client().staff("admin@chuctu.vn");
+    }
+
+    /** Bác sĩ (hoặc Quản trị viên) gọi người đã check-in của phiếu này vào khám sơ bộ. */
+    protected void callIn(TestClient doctor, long appointmentId) {
+        long checkinId = jdbc.queryForObject("SELECT id FROM checkins WHERE appointment_id = ? AND status = 'WAITING'", Long.class, appointmentId);
+        doctor.post("/api/staff/exam/" + checkinId + "/call", TestClient.body()).expectStatus(200);
+    }
+
+    /** Bác sĩ (hoặc Quản trị viên) chỉ định điều trị cho người đang khám sơ bộ của phiếu này. */
+    protected void orderTreatment(TestClient doctor, long appointmentId) {
+        long checkinId = jdbc.queryForObject("SELECT id FROM checkins WHERE appointment_id = ? AND status = 'EXAMINING'", Long.class, appointmentId);
+        doctor.post("/api/staff/exam/" + checkinId + "/order", TestClient.body("treatmentKinds", List.of("CHAM_CUU"))).expectStatus(200);
+    }
+
     @BeforeEach
     void resetDatabaseAndClocks() {
         wipeAllTables();
