@@ -15,7 +15,7 @@ import tools.jackson.databind.JsonNode;
 import vn.chuctu.clinic.common.Tx;
 import vn.chuctu.clinic.common.VnTime;
 
-/** Số thứ tự hàng chờ khi lọc, huỷ phiếu đặt tại quầy đã gắn tài khoản, lấp ghế sau khi huỷ người đang khám. */
+/** Số thứ tự hàng chờ khi lọc, huỷ phiếu đặt tại quầy đã gắn tài khoản, lấp chỗ sau khi huỷ người đang khám. */
 class QueueListFixesTest extends IntegrationTest {
 
     private int seq;
@@ -48,7 +48,7 @@ class QueueListFixesTest extends IntegrationTest {
     @DisplayName("[java] Lịch trong ngày lọc theo tên vẫn hiện đúng số thứ tự trong cả hàng chờ")
     void soThuTuKhiLoc() {
         var staff = client().staff();
-        staff.put("/api/staff/queue/auto-invite", body("enabled", false)).expectStatus(200);
+        clinicStaff().put("/api/staff/queue/auto-invite", body("enabled", false)).expectStatus(200);
         List<Long> ids = new ArrayList<>();
         for (String name : List.of("Người Một", "Người Hai", "Người Ba")) ids.add(todayAppointment(name));
         for (long id : ids) staff.post("/api/staff/appointments/" + id + "/checkin", body()).expectStatus(200);
@@ -72,20 +72,25 @@ class QueueListFixesTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("[java] huỷ phiếu người đang khám thì tự mời người kế tiếp khi bật tự động mời")
+    @DisplayName("[java] huỷ phiếu người đang điều trị thì tự mời người kế tiếp vào chỗ khi bật tự động mời")
     void huyNguoiDangKhamThiLapGhe() {
         var staff = client().staff();
-        staff.put("/api/staff/queue/auto-invite", body("enabled", true)).expectStatus(200);
+        var clinic = clinicStaff();
+        clinic.put("/api/staff/queue/auto-invite", body("enabled", true)).expectStatus(200);
         List<Long> ids = new ArrayList<>();
         for (int i = 0; i < 6; i++) ids.add(todayAppointment("Người " + i));
-        for (long id : ids) staff.post("/api/staff/appointments/" + id + "/checkin", body()).expectStatus(200);
+        for (long id : ids) {
+            staff.post("/api/staff/appointments/" + id + "/checkin", body()).expectStatus(200);
+            callIn(clinic, id);
+            orderTreatment(clinic, id);
+        }
         var before = staff.get("/api/staff/queue").expectStatus(200).json();
         assertThat(before.get("inRoomCount").intValue()).isEqualTo(5);
-        assertThat(before.get("waitingCount").intValue()).isEqualTo(1);
+        assertThat(before.get("treatmentWaitingCount").intValue()).isEqualTo(1);
 
         staff.post("/api/staff/appointments/" + ids.get(0) + "/cancel", body("reason", "Về sớm")).expectStatus(200);
         var after = staff.get("/api/staff/queue").expectStatus(200).json();
         assertThat(after.get("inRoomCount").intValue()).isEqualTo(5);
-        assertThat(after.get("waitingCount").intValue()).isZero();
+        assertThat(after.get("treatmentWaitingCount").intValue()).isZero();
     }
 }

@@ -17,7 +17,11 @@ import vn.chuctu.clinic.common.Body;
 import vn.chuctu.clinic.common.VnTime;
 import vn.chuctu.clinic.security.CurrentUser;
 
-/** Check-in, vào phòng khám và hàng đợi (UC.7.3, UC.7.4, UC.10.1 đến UC.10.5), phần hàng đợi của routes/staff.routes.js. */
+/**
+ * Check-in (tiếp tân), hàng đợi (mọi nhân viên xem), khám sơ bộ (bác sĩ) và chỗ điều trị (kỹ thuật viên). Quyền theo
+ * đường dẫn do SecurityConfig: /exam/** cho Bác sĩ, /treatment/** và /queue/auto-invite cho Kỹ thuật viên, Quản trị viên
+ * làm được tất cả.
+ */
 @RestController
 @RequestMapping("/api/staff")
 public class QueueController {
@@ -46,6 +50,8 @@ public class QueueController {
         return Map.of("appointment", appointments.getStaffAppointment(id));
     }
 
+    // ---------- Tiếp tân ----------
+
     @PostMapping("/appointments/{id}/checkin")
     Map<String, Object> checkIn(@PathVariable long id) {
         queue.checkIn(currentUser.require(), id);
@@ -58,32 +64,70 @@ public class QueueController {
         return appointment(id);
     }
 
-    @PostMapping("/appointments/{id}/enter")
-    Map<String, Object> enter(@PathVariable long id) {
-        queue.enterRoom(id, clock.instant());
-        return appointment(id);
-    }
-
-    @PostMapping("/appointments/{id}/undo-enter")
-    Map<String, Object> undoEnter(@PathVariable long id) {
-        queue.undoEnterByAppointment(id);
-        return appointment(id);
-    }
-
     @GetMapping("/queue")
     Map<String, Object> queue() {
         return state();
     }
 
-    @PostMapping("/queue/invite")
-    Map<String, Object> invite() {
-        queue.inviteNext(today(), clock.instant());
+    // ---------- Bác sĩ ----------
+
+    @PostMapping("/exam/call-next")
+    Map<String, Object> callNext() {
+        long id = queue.callNext(currentUser.require(), today(), clock.instant());
+        Map<String, Object> out = new java.util.LinkedHashMap<>(state());
+        out.put("calledId", String.valueOf(id));
+        return out;
+    }
+
+    @PostMapping("/exam/{checkinId}/call")
+    Map<String, Object> call(@PathVariable long checkinId) {
+        queue.call(currentUser.require(), checkinId, clock.instant());
         return state();
     }
 
-    @PostMapping("/queue/{checkinId}/undo-enter")
-    Map<String, Object> undoEnterByCheckin(@PathVariable long checkinId) {
+    @PostMapping("/exam/{checkinId}/undo-call")
+    Map<String, Object> undoCall(@PathVariable long checkinId) {
+        queue.undoCall(currentUser.require(), checkinId);
+        return state();
+    }
+
+    @PostMapping("/exam/{checkinId}/order")
+    Map<String, Object> order(@PathVariable long checkinId, @RequestBody(required = false) JsonNode json) {
+        var data = VisitForms.parseOrder(json);
+        queue.orderTreatment(currentUser.require(), checkinId, data);
+        return state();
+    }
+
+    @PostMapping("/exam/{checkinId}/undo-order")
+    Map<String, Object> undoOrder(@PathVariable long checkinId) {
+        queue.undoOrder(currentUser.require(), checkinId);
+        return state();
+    }
+
+    // ---------- Kỹ thuật viên ----------
+
+    @PostMapping("/treatment/invite")
+    Map<String, Object> invite() {
+        queue.inviteNext(today(), clock.instant(), currentUser.require());
+        return state();
+    }
+
+    @PostMapping("/treatment/{checkinId}/seat")
+    Map<String, Object> seat(@PathVariable long checkinId) {
+        queue.seat(checkinId, clock.instant(), currentUser.require());
+        return state();
+    }
+
+    @PostMapping("/treatment/{checkinId}/undo-seat")
+    Map<String, Object> undoSeat(@PathVariable long checkinId) {
         queue.undoEnter(checkinId);
+        return state();
+    }
+
+    @PostMapping("/treatment/{checkinId}/report")
+    Map<String, Object> report(@PathVariable long checkinId, @RequestBody(required = false) JsonNode json) {
+        var data = VisitForms.parseReport(json);
+        queue.finishTreatment(currentUser.require(), checkinId, data);
         return state();
     }
 

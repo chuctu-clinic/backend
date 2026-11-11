@@ -14,7 +14,7 @@ import vn.chuctu.clinic.common.Tx;
 import vn.chuctu.clinic.common.VnTime;
 import vn.chuctu.clinic.queue.QueueService;
 
-/** Việc lấp ghế sau khi giao dịch chính đã commit lỗi thì yêu cầu vẫn thành công, như RecordService sau khi lưu bệnh án. */
+/** Việc lấp chỗ sau khi giao dịch chính đã commit lỗi thì yêu cầu vẫn thành công, như RecordService sau khi lưu bệnh án. */
 class QueuePostCommitFillTest extends IntegrationTest {
 
     @MockitoSpyBean QueueService queue;
@@ -35,42 +35,46 @@ class QueuePostCommitFillTest extends IntegrationTest {
     }
 
     private void fillFails() {
-        doThrow(new IllegalStateException("lỗi giả lập khi lấp ghế")).when(queue).fillSeats(any(), any(), any());
+        doThrow(new IllegalStateException("lỗi giả lập khi lấp chỗ")).when(queue).fillSeats(any(), any(), any());
     }
 
     @Test
-    @DisplayName("[java] check-in vẫn thành công khi lấp ghế sau commit lỗi")
-    void checkInKhiLapGheLoi() {
-        var staff = client().staff();
+    @DisplayName("[java] chỉ định điều trị vẫn thành công khi lấp chỗ sau commit lỗi")
+    void chiDinhKhiLapGheLoi() {
+        var staff = clinicStaff();
         staff.put("/api/staff/queue/auto-invite", body("enabled", true)).expectStatus(200);
         long a = todayAppointment();
-        fillFails();
         staff.post("/api/staff/appointments/" + a + "/checkin", body()).expectStatus(200);
-        assertThat(jdbc.queryForObject("SELECT status FROM checkins WHERE appointment_id = ?", String.class, a)).isEqualTo("WAITING");
+        callIn(staff, a);
+        fillFails();
+        orderTreatment(staff, a);
+        assertThat(jdbc.queryForObject("SELECT status FROM checkins WHERE appointment_id = ?", String.class, a)).isEqualTo("WAITING_TREATMENT");
     }
 
     @Test
-    @DisplayName("[java] hoàn tác vào khám vẫn thành công khi lấp ghế sau commit lỗi")
+    @DisplayName("[java] hoàn tác vào chỗ vẫn thành công khi lấp chỗ sau commit lỗi")
     void undoEnterKhiLapGheLoi() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         staff.put("/api/staff/queue/auto-invite", body("enabled", false)).expectStatus(200);
         long a = todayAppointment();
         staff.post("/api/staff/appointments/" + a + "/checkin", body()).expectStatus(200);
-        staff.post("/api/staff/appointments/" + a + "/enter", body()).expectStatus(200);
+        callIn(staff, a);
+        orderTreatment(staff, a);
         long checkinId = jdbc.queryForObject("SELECT id FROM checkins WHERE appointment_id = ?", Long.class, a);
+        staff.post("/api/staff/treatment/" + checkinId + "/seat", body()).expectStatus(200);
         staff.put("/api/staff/queue/auto-invite", body("enabled", true)).expectStatus(200);
         fillFails();
-        staff.post("/api/staff/queue/" + checkinId + "/undo-enter", body()).expectStatus(200);
-        assertThat(jdbc.queryForObject("SELECT status FROM checkins WHERE id = ?", String.class, checkinId)).isEqualTo("WAITING");
+        staff.post("/api/staff/treatment/" + checkinId + "/undo-seat", body()).expectStatus(200);
+        assertThat(jdbc.queryForObject("SELECT status FROM checkins WHERE id = ?", String.class, checkinId)).isEqualTo("WAITING_TREATMENT");
     }
 
     @Test
-    @DisplayName("[java] bật tự động mời vẫn lưu cài đặt khi lấp ghế lỗi")
+    @DisplayName("[java] bật tự động mời vẫn lưu cài đặt khi lấp chỗ lỗi")
     void batTuDongMoiKhiLapGheLoi() {
         var staff = client().staff();
-        staff.put("/api/staff/queue/auto-invite", body("enabled", false)).expectStatus(200);
+        clinicStaff().put("/api/staff/queue/auto-invite", body("enabled", false)).expectStatus(200);
         fillFails();
-        var res = staff.put("/api/staff/queue/auto-invite", body("enabled", true)).expectStatus(200).json();
+        var res = clinicStaff().put("/api/staff/queue/auto-invite", body("enabled", true)).expectStatus(200).json();
         assertThat(res.get("autoInvite").booleanValue()).isTrue();
     }
 }

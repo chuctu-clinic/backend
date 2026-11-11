@@ -88,7 +88,10 @@ class DashboardTest extends IntegrationTest {
         // hồ sơ chính chủ của người dùng vừa đăng ký và hồ sơ của phiếu
         assertThat(res.get("patients").get("total").intValue()).isEqualTo(2);
         JsonNode queue = res.get("queue");
-        assertThat(queue.get("inRoomCount").intValue()).isEqualTo(1);
+        // Check-in xong thì chờ bác sĩ gọi khám, chưa ở chỗ điều trị
+        assertThat(queue.get("waitingCount").intValue()).isEqualTo(1);
+        assertThat(queue.get("inRoomCount").intValue()).isZero();
+        assertThat(queue.get("examiningCount").intValue()).isZero();
         assertThat(queue.get("capacity").intValue()).isEqualTo(5);
         assertThat(queue.get("slotMap").isArray()).isTrue();
     }
@@ -109,7 +112,7 @@ class DashboardTest extends IntegrationTest {
 
         JsonNode res = admin.get("/api/admin/dashboard").expectStatus(200).json();
         JsonNode waiting = res.get("queue").get("waiting");
-        assertThat(waiting.size()).isEqualTo(1);
+        assertThat(waiting.size()).isEqualTo(6);
         assertThat(waiting.get(0).size()).isEqualTo(2);
         assertThat(waiting.get(0).get("ticketCode").stringValue()).startsWith("CT-PK-D-");
         assertThat(waiting.get(0).get("priorityGroup").isString()).isTrue();

@@ -59,6 +59,9 @@ public class DashboardService {
         Map<String, Object> queueSummary = new LinkedHashMap<>();
         queueSummary.put("inRoomCount", state.get("inRoomCount"));
         queueSummary.put("waitingCount", state.get("waitingCount"));
+        queueSummary.put("examiningCount", ((List<?>) state.get("examining")).size());
+        queueSummary.put("treatmentWaitingCount", state.get("treatmentWaitingCount"));
+        queueSummary.put("awaitingConclusionCount", ((List<?>) state.get("awaitingConclusion")).size());
         queueSummary.put("completedCount", state.get("completedCount"));
         queueSummary.put("capacity", state.get("capacity"));
         queueSummary.put("slotMap", state.get("slotMap"));

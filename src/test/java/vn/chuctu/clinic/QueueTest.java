@@ -16,7 +16,11 @@ import vn.chuctu.clinic.common.VnTime;
 import vn.chuctu.clinic.queue.QueueService;
 import vn.chuctu.clinic.queue.Settings;
 
-/** Cổng từ test/queue.test.js (check-in, hàng đợi, mời vào khám, tự huỷ phiếu không đến), kèm vài test [java] cho điểm Node không có. */
+/**
+ * Cổng từ test/queue.test.js (check-in, hàng đợi, tự huỷ phiếu không đến), kèm vài test [java] cho điểm Node không có. 5 chỗ giờ là
+ * chỗ điều trị: người vào chỗ là người đã được bác sĩ gọi khám và chỉ định điều trị. Quy trình bác sĩ và kỹ thuật viên chi tiết ở
+ * VisitFlowTest.
+ */
 class QueueTest extends IntegrationTest {
 
     @Autowired AppointmentService appointments;
@@ -72,18 +76,40 @@ class QueueTest extends IntegrationTest {
         return jdbc.queryForObject("SELECT status FROM checkins WHERE appointment_id = ? ORDER BY id DESC LIMIT 1", String.class, appointmentId);
     }
 
+    private TestClient clinic;
+
+    /** Quản trị viên mẫu: làm thay bác sĩ (gọi khám, chỉ định, kết luận) và kỹ thuật viên (chỗ, báo cáo). */
+    private TestClient clinic() {
+        if (clinic == null) clinic = clinicStaff();
+        return clinic;
+    }
+
     private void autoInvite(TestClient staff, boolean enabled) {
-        staff.put("/api/staff/queue/auto-invite", body("enabled", enabled)).expectStatus(200);
+        clinic().put("/api/staff/queue/auto-invite", body("enabled", enabled)).expectStatus(200);
+    }
+
+    private long checkinIdOf(long appointmentId) {
+        return jdbc.queryForObject("SELECT id FROM checkins WHERE appointment_id = ? ORDER BY id DESC LIMIT 1", Long.class, appointmentId);
+    }
+
+    /** Kỹ thuật viên lưu báo cáo điều trị cho người đang ở chỗ: chỗ trả lại, người đó chờ kết luận. */
+    private void report(long appointmentId) {
+        clinic().post("/api/staff/treatment/" + checkinIdOf(appointmentId) + "/report", body("other", "Đã điều trị")).expectStatus(200);
     }
 
     private JsonNode queueState(TestClient staff) {
         return staff.get("/api/staff/queue").expectStatus(200).json();
     }
 
+    /** n người check-in, được bác sĩ gọi khám và chỉ định điều trị (tự động mời đang bật thì vào chỗ ngay), theo thứ tự. */
     private List<Long> checkInAll(TestClient staff, int n) {
         List<Long> ids = new ArrayList<>();
         for (int i = 0; i < n; i++) ids.add(todayAppointment("Người " + i));
-        for (long id : ids) staff.post("/api/staff/appointments/" + id + "/checkin", body()).expectStatus(200);
+        for (long id : ids) {
+            staff.post("/api/staff/appointments/" + id + "/checkin", body()).expectStatus(200);
+            callIn(clinic(), id);
+            orderTreatment(clinic(), id);
+        }
         return ids;
     }
 
@@ -211,36 +237,40 @@ class QueueTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("tối đa 5 người trong phòng, tự động mời người kế tiếp khi còn ghế (BR.29)")
+    @DisplayName("tối đa 5 người ở chỗ điều trị, tự động mời người kế tiếp khi còn chỗ (BR.29)")
     void toiDa5NguoiTrongPhong() {
         var staff = client().staff();
         checkInAll(staff, 7);
 
         var q = queueState(staff);
         assertThat(q.get("inRoomCount").intValue()).isEqualTo(5);
-        assertThat(q.get("waitingCount").intValue()).isEqualTo(2);
+        assertThat(q.get("treatmentWaitingCount").intValue()).isEqualTo(2);
 
-        // Lưu phiếu kết quả cho người ở ghế 1: hoàn thành, rời phòng, người kế tiếp vào (BR.30)
-        String firstAppt = q.get("seats").get(0).get("appointmentId").stringValue();
-        staff.post("/api/staff/appointments/" + firstAppt + "/record",
-                body("diagnosis", "Đau vai gáy", "pulse", "78", "bloodPressure", "120/80", "doctorName", "BS. Minh")).expectStatus(201);
+        // Người ở chỗ 1 điều trị xong: chỗ trả lại, người kế tiếp vào; bác sĩ kết luận thì hoàn thành (BR.30)
+        long firstAppt = Long.parseLong(q.get("seats").get(0).get("appointmentId").stringValue());
+        report(firstAppt);
         q = queueState(staff);
         assertThat(q.get("inRoomCount").intValue()).isEqualTo(5);
-        assertThat(q.get("waitingCount").intValue()).isEqualTo(1);
+        assertThat(q.get("treatmentWaitingCount").intValue()).isEqualTo(1);
+        assertThat(q.get("awaitingConclusion").size()).isEqualTo(1);
+        clinic().post("/api/staff/appointments/" + firstAppt + "/record",
+                body("diagnosis", "Đau vai gáy", "pulse", "78", "bloodPressure", "120/80", "doctorName", "BS. Minh")).expectStatus(201);
+        q = queueState(staff);
         assertThat(q.get("completedCount").intValue()).isEqualTo(1);
+        assertThat(q.get("awaitingConclusion").size()).isZero();
         var done = staff.get("/api/staff/appointments/" + firstAppt).expectStatus(200).json();
         assertThat(done.get("appointment").get("status").stringValue()).isEqualTo("COMPLETED");
     }
 
     @Test
-    @DisplayName("[java] tối đa 5 người trong phòng, hoàn thành một người thì người kế tiếp vào ghế đó (BR.29, BR.30)")
+    @DisplayName("[java] tối đa 5 người ở chỗ điều trị, báo cáo xong một người thì người kế tiếp vào chỗ đó (BR.29, BR.30)")
     void javaToiDa5NguoiTrongPhong() {
         var staff = client().staff();
         List<Long> ids = checkInAll(staff, 7);
 
         var q = queueState(staff);
         assertThat(q.get("inRoomCount").intValue()).isEqualTo(5);
-        assertThat(q.get("waitingCount").intValue()).isEqualTo(2);
+        assertThat(q.get("treatmentWaitingCount").intValue()).isEqualTo(2);
         assertThat(q.get("capacity").intValue()).isEqualTo(5);
         assertThat(q.get("autoInvite").booleanValue()).isTrue();
 
@@ -248,17 +278,14 @@ class QueueTest extends IntegrationTest {
         assertThat(first.get("seatNo").intValue()).isEqualTo(1);
         long checkinId = Long.parseLong(first.get("id").stringValue());
         long firstAppt = Long.parseLong(first.get("appointmentId").stringValue());
-        jdbc.update("UPDATE appointments SET status = 'COMPLETED' WHERE id = ?", firstAppt);
-        assertThat(queue.markCheckinCompleted(checkinId, Instant.now())).isTrue();
-        queue.fillAfterCompletion(todayVn());
+        report(firstAppt);
 
         q = queueState(staff);
         assertThat(q.get("inRoomCount").intValue()).isEqualTo(5);
-        assertThat(q.get("waitingCount").intValue()).isEqualTo(1);
-        assertThat(q.get("completedCount").intValue()).isEqualTo(1);
-        // Người kế tiếp (thứ 6) vào đúng ghế vừa trống
+        assertThat(q.get("treatmentWaitingCount").intValue()).isEqualTo(1);
+        // Người kế tiếp (thứ 6) vào đúng chỗ vừa trống
         assertThat(q.get("seats").get(0).get("appointmentId").stringValue()).isEqualTo(String.valueOf(ids.get(5)));
-        assertThat(checkinStatus(firstAppt)).isEqualTo("COMPLETED");
+        assertThat(checkinStatus(firstAppt)).isEqualTo("WAITING_CONCLUSION");
         assertThat(jdbc.queryForObject("SELECT seat_no FROM checkins WHERE id = ?", Integer.class, checkinId)).isNull();
     }
 
@@ -282,25 +309,26 @@ class QueueTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("hoàn tác vào khám đưa người đó về hàng chờ, ghế trống nhận người kế tiếp (BR.27)")
+    @DisplayName("hoàn tác vào chỗ đưa người đó về hàng chờ điều trị, chỗ trống nhận người kế tiếp (BR.27)")
     void hoanTacVaoKham() {
         var staff = client().staff();
         checkInAll(staff, 6);
         var q = queueState(staff);
         String seat1 = q.get("seats").get(0).get("id").stringValue();
-        q = staff.post("/api/staff/queue/" + seat1 + "/undo-enter", body()).expectStatus(200).json();
+        q = clinic().post("/api/staff/treatment/" + seat1 + "/undo-seat", body()).expectStatus(200).json();
         assertThat(q.get("inRoomCount").intValue()).isEqualTo(5);
-        assertThat(q.get("waitingCount").intValue()).isEqualTo(1);
-        assertThat(q.get("waiting").get(0).get("id").stringValue()).isEqualTo(seat1);
+        assertThat(q.get("treatmentWaitingCount").intValue()).isEqualTo(1);
+        assertThat(q.get("treatmentWaiting").get(0).get("id").stringValue()).isEqualTo(seat1);
         assertThat(q.get("seats").get(0).get("id").stringValue()).isNotEqualTo(seat1);
     }
 
     @Test
     @DisplayName("sửa phiếu kết quả ghi lại lịch sử sửa (UC.9.9)")
     void suaPhieuKetQua() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         long a = todayAppointment("Người sửa phiếu");
         staff.post("/api/staff/appointments/" + a + "/checkin", body()).expectStatus(200);
+        callIn(staff, a);
         var created = staff.post("/api/staff/appointments/" + a + "/record", body("diagnosis", "Đau lưng")).expectStatus(201).json();
         var updated = staff.put("/api/staff/records/" + created.get("record").get("id").stringValue(),
                 body("diagnosis", "Thoát vị đĩa đệm nhẹ")).expectStatus(200).json();
@@ -325,30 +353,30 @@ class QueueTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("mời đúng một người vào khám và hoàn tác từ Lịch trong ngày")
+    @DisplayName("mời đúng một người vào chỗ điều trị và hoàn tác; Lịch trong ngày hiện bước của lượt khám")
     void moiDungMotNguoiTuLich() {
         var staff = client().staff();
         autoInvite(staff, false);
-        long first = todayAppointment("Người đầu");
-        long second = todayAppointment("Người sau");
-        staff.post("/api/staff/appointments/" + first + "/checkin", body()).expectStatus(200);
-        staff.post("/api/staff/appointments/" + second + "/checkin", body()).expectStatus(200);
+        List<Long> ids = checkInAll(staff, 2);
+        long first = ids.get(0);
+        long second = ids.get(1);
 
-        var entered = staff.post("/api/staff/appointments/" + second + "/enter", body()).expectStatus(200).json();
-        assertThat(entered.get("appointment").get("status").stringValue()).isEqualTo("IN_PROGRESS");
+        clinic().post("/api/staff/treatment/" + checkinIdOf(second) + "/seat", body()).expectStatus(200);
+        assertThat(apptStatus(second)).isEqualTo("IN_PROGRESS");
         var day = staff.get("/api/staff/appointments").expectStatus(200).json();
         JsonNode row = item(day, second);
         assertThat(row.get("checkin").get("status").stringValue()).isEqualTo("IN_ROOM");
         assertThat(row.get("checkin").get("enteredAt").stringValue()).isNotEmpty();
-        assertThat(item(day, first).get("checkin").get("queueNo").intValue()).isEqualTo(1);
+        assertThat(item(day, first).get("checkin").get("status").stringValue()).isEqualTo("WAITING_TREATMENT");
 
         var state = queueState(staff);
         assertThat(state.get("inRoomCount").intValue()).isEqualTo(1);
-        assertThat(state.get("waitingCount").intValue()).isEqualTo(1);
+        assertThat(state.get("treatmentWaitingCount").intValue()).isEqualTo(1);
 
-        var undone = staff.post("/api/staff/appointments/" + second + "/undo-enter", body()).expectStatus(200).json();
-        assertThat(undone.get("appointment").get("status").stringValue()).isEqualTo("CHECKED_IN");
-        staff.post("/api/staff/appointments/" + second + "/undo-enter", body()).expectStatus(409);
+        clinic().post("/api/staff/treatment/" + checkinIdOf(second) + "/undo-seat", body()).expectStatus(200);
+        assertThat(checkinStatus(second)).isEqualTo("WAITING_TREATMENT");
+        assertThat(apptStatus(second)).isEqualTo("IN_PROGRESS");
+        clinic().post("/api/staff/treatment/" + checkinIdOf(second) + "/undo-seat", body()).expectStatus(409);
     }
 
     private static JsonNode item(JsonNode day, long appointmentId) {
@@ -359,9 +387,10 @@ class QueueTest extends IntegrationTest {
     @Test
     @DisplayName("phiếu kết quả chỉ sửa được trong 24 giờ sau khi xác nhận")
     void phieuKetQuaChiSuaTrong24Gio() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         long a = todayAppointment("Người quá hạn sửa");
         staff.post("/api/staff/appointments/" + a + "/checkin", body()).expectStatus(200);
+        callIn(staff, a);
         var created = staff.post("/api/staff/appointments/" + a + "/record", body("diagnosis", "Đau gối")).expectStatus(201).json();
         String id = created.get("record").get("id").stringValue();
         assertThat(created.get("record").get("editableUntil").stringValue()).isNotEmpty();
@@ -376,63 +405,61 @@ class QueueTest extends IntegrationTest {
         assertThat(dates.get("dates").toString()).contains(todayVn().toString());
     }
 
-    // ---------- Phiếu đã xong không bao giờ được xếp ghế lại ----------
+    // ---------- Phiếu đã xong không bao giờ được xếp chỗ lại ----------
 
+    /** Chèn thẳng một check-in; chỉ định từ một giờ trước để đứng đầu hàng chờ điều trị. */
     private void insertCheckin(long appointmentId, String status, Integer seat) {
         long patientId = jdbc.queryForObject("SELECT patient_id FROM appointments WHERE id = ?", Long.class, appointmentId);
-        jdbc.update("INSERT INTO checkins (appointment_id, patient_id, visit_date, check_in_time, priority_group, status, seat_no, created_at) "
-                + "VALUES (?, ?, ?, UTC_TIMESTAMP(3), 'NORMAL', ?, ?, UTC_TIMESTAMP(3))", appointmentId, patientId, todayVn(), status, seat);
+        jdbc.update("INSERT INTO checkins (appointment_id, patient_id, visit_date, check_in_time, priority_group, status, seat_no, treatment_kinds, "
+                + "ordered_at, created_at) VALUES (?, ?, ?, UTC_TIMESTAMP(3), 'NORMAL', ?, ?, 'CHAM_CUU', "
+                + "TIMESTAMPADD(HOUR, -1, UTC_TIMESTAMP(3)), UTC_TIMESTAMP(3))", appointmentId, patientId, todayVn(), status, seat);
     }
 
     @Test
-    @DisplayName("[java] phiếu đã hoàn thành mà check-in còn chờ thì không bao giờ được mời vào ghế")
+    @DisplayName("[java] phiếu đã hoàn thành mà check-in còn chờ điều trị thì không bao giờ được mời vào chỗ")
     void javaPhieuDaXongKhongDuocMoi() {
-        var staff = client().staff();
         long a = todayAppointment("Người đã xong");
         jdbc.update("UPDATE appointments SET status = 'COMPLETED' WHERE id = ?", a);
-        insertCheckin(a, "WAITING", null);
+        insertCheckin(a, "WAITING_TREATMENT", null);
 
-        staff.post("/api/staff/appointments/" + a + "/enter", body()).expectStatus(409);
+        clinic().post("/api/staff/treatment/" + checkinIdOf(a) + "/seat", body()).expectStatus(409);
         queue.fillSeats(todayVn());
         assertThat(apptStatus(a)).isEqualTo("COMPLETED");
-        assertThat(checkinStatus(a)).isEqualTo("WAITING");
+        assertThat(checkinStatus(a)).isEqualTo("WAITING_TREATMENT");
         assertThat(jdbc.queryForObject("SELECT seat_no FROM checkins WHERE appointment_id = ?", Integer.class, a)).isNull();
-        // Dòng hỏng không phải là phòng đầy: không còn ai mời được thì báo hàng chờ trống
-        var res = staff.post("/api/staff/queue/invite", body()).expectStatus(409).json();
+        // Dòng hỏng không phải là hết chỗ: không còn ai mời được thì báo hàng chờ trống
+        var res = clinic().post("/api/staff/treatment/invite", body()).expectStatus(409).json();
         assertThat(res.get("error").get("code").stringValue()).isEqualTo("QUEUE_EMPTY");
         assertThat(apptStatus(a)).isEqualTo("COMPLETED");
     }
 
     @Test
-    @DisplayName("[java] mời kế tiếp bỏ qua người đầu hàng không xếp ghế được và mời người sau")
+    @DisplayName("[java] mời kế tiếp bỏ qua người đầu hàng chờ điều trị không xếp chỗ được và mời người sau")
     void javaMoiBoQuaDongHong() {
         var staff = client().staff();
         autoInvite(staff, false);
         long stuck = todayAppointment("Người đã xong");
         jdbc.update("UPDATE appointments SET status = 'COMPLETED' WHERE id = ?", stuck);
-        insertCheckin(stuck, "WAITING", null);
-        jdbc.update("UPDATE checkins SET priority_group = 'PRIORITY' WHERE appointment_id = ?", stuck);
-        long next = todayAppointment("Người chờ thật");
-        staff.post("/api/staff/appointments/" + next + "/checkin", body()).expectStatus(200);
-        // Người hỏng đứng đầu hàng (nhóm ưu tiên), người chờ thật đứng sau
-        assertThat(queueState(staff).get("waiting").get(0).get("appointmentId").stringValue()).isEqualTo(String.valueOf(stuck));
+        insertCheckin(stuck, "WAITING_TREATMENT", null);
+        long next = checkInAll(staff, 1).get(0);
+        // Người hỏng đứng đầu hàng (chỉ định sớm hơn), người chờ thật đứng sau
+        assertThat(queueState(staff).get("treatmentWaiting").get(0).get("appointmentId").stringValue()).isEqualTo(String.valueOf(stuck));
 
-        staff.post("/api/staff/queue/invite", body()).expectStatus(200);
+        clinic().post("/api/staff/treatment/invite", body()).expectStatus(200);
         assertThat(apptStatus(next)).isEqualTo("IN_PROGRESS");
         assertThat(checkinStatus(next)).isEqualTo("IN_ROOM");
         assertThat(apptStatus(stuck)).isEqualTo("COMPLETED");
-        assertThat(checkinStatus(stuck)).isEqualTo("WAITING");
+        assertThat(checkinStatus(stuck)).isEqualTo("WAITING_TREATMENT");
     }
 
     @Test
-    @DisplayName("[java] phiếu đã hoàn thành mà check-in còn trong phòng thì hoàn tác vào khám bị từ chối, không đổi gì")
+    @DisplayName("[java] phiếu đã hoàn thành mà check-in còn ở chỗ thì hoàn tác vào chỗ bị từ chối, không đổi gì")
     void javaPhieuDaXongKhongHoanTacDuoc() {
-        var staff = client().staff();
         long a = todayAppointment("Người đã xong trong phòng");
         jdbc.update("UPDATE appointments SET status = 'COMPLETED' WHERE id = ?", a);
         insertCheckin(a, "IN_ROOM", 1);
 
-        var res = staff.post("/api/staff/appointments/" + a + "/undo-enter", body()).expectStatus(409).json();
+        var res = clinic().post("/api/staff/treatment/" + checkinIdOf(a) + "/undo-seat", body()).expectStatus(409).json();
         assertThat(res.get("error").get("code").stringValue()).isEqualTo("STALE");
         assertThat(apptStatus(a)).isEqualTo("COMPLETED");
         assertThat(checkinStatus(a)).isEqualTo("IN_ROOM");
@@ -442,39 +469,37 @@ class QueueTest extends IntegrationTest {
     // ---------- Mời vào khám (UC.10.2) ----------
 
     @Test
-    @DisplayName("hàng chờ trống thì báo chưa có ai")
+    @DisplayName("hàng chờ trống thì báo chưa có ai, ở cả hàng chờ khám lẫn hàng chờ điều trị")
     void hangChoTrong() {
-        var staff = client().staff();
-        var res = staff.post("/api/staff/queue/invite", body()).expectStatus(409).json();
+        var res = clinic().post("/api/staff/treatment/invite", body()).expectStatus(409).json();
+        assertThat(res.get("error").get("code").stringValue()).isEqualTo("QUEUE_EMPTY");
+        res = clinic().post("/api/staff/exam/call-next", body()).expectStatus(409).json();
         assertThat(res.get("error").get("code").stringValue()).isEqualTo("QUEUE_EMPTY");
     }
 
     @Test
-    @DisplayName("phòng đã đủ 5 người thì người tiếp theo vẫn chờ")
+    @DisplayName("đã đủ 5 chỗ điều trị thì người tiếp theo vẫn chờ")
     void phongDay() {
         var staff = client().staff();
         checkInAll(staff, 6);
-        var res = staff.post("/api/staff/queue/invite", body()).expectStatus(409).json();
+        var res = clinic().post("/api/staff/treatment/invite", body()).expectStatus(409).json();
         assertThat(res.get("error").get("code").stringValue()).isEqualTo("ROOM_FULL");
         var state = queueState(staff);
         assertThat(state.get("inRoomCount").intValue()).isEqualTo(5);
-        assertThat(state.get("waitingCount").intValue()).isEqualTo(1);
+        assertThat(state.get("treatmentWaitingCount").intValue()).isEqualTo(1);
     }
 
     @Test
-    @DisplayName("còn ghế thì mời đúng người đầu hàng chờ")
+    @DisplayName("còn chỗ thì mời đúng người đầu hàng chờ điều trị")
     void conGheMoiNguoiDau() {
         var staff = client().staff();
         autoInvite(staff, false);
-        long first = todayAppointment("Người đến trước");
-        long second = todayAppointment("Người đến sau");
-        staff.post("/api/staff/appointments/" + first + "/checkin", body()).expectStatus(200);
-        staff.post("/api/staff/appointments/" + second + "/checkin", body()).expectStatus(200);
+        List<Long> ids = checkInAll(staff, 2);
 
-        var state = staff.post("/api/staff/queue/invite", body()).expectStatus(200).json();
+        var state = clinic().post("/api/staff/treatment/invite", body()).expectStatus(200).json();
         assertThat(state.get("inRoomCount").intValue()).isEqualTo(1);
-        assertThat(apptStatus(first)).isEqualTo("IN_PROGRESS");
-        assertThat(apptStatus(second)).isEqualTo("CHECKED_IN");
+        assertThat(checkinStatus(ids.get(0))).isEqualTo("IN_ROOM");
+        assertThat(checkinStatus(ids.get(1))).isEqualTo("WAITING_TREATMENT");
     }
 
     // ---------- Chỉ có ở bản Java ----------
@@ -497,7 +522,7 @@ class QueueTest extends IntegrationTest {
         assertThat(apptStatus(a)).isEqualTo("CHECKED_IN");
         assertThat(userStatusOf(user, a)).isEqualTo("BOOKED");
 
-        staff.post("/api/staff/appointments/" + a + "/enter", body()).expectStatus(200);
+        callIn(clinic(), a);
         assertThat(apptStatus(a)).isEqualTo("IN_PROGRESS");
         assertThat(userStatusOf(user, a)).isEqualTo("BOOKED");
         assertThat(user.get("/api/me/appointments/" + a).expectStatus(200).json().get("appointment").get("status").stringValue()).isEqualTo("BOOKED");
@@ -511,30 +536,32 @@ class QueueTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("[java] huỷ phiếu đã check-in thì rời hàng đợi và nhả ghế")
+    @DisplayName("[java] huỷ phiếu đang điều trị thì rời hàng đợi và nhả chỗ")
     void javaHuyPhieuDaCheckInNhaGhe() {
         var staff = client().staff();
         List<Long> ids = checkInAll(staff, 6);
-        assertThat(queueState(staff).get("waitingCount").intValue()).isEqualTo(1);
+        assertThat(queueState(staff).get("treatmentWaitingCount").intValue()).isEqualTo(1);
 
-        // Người ở ghế 1 huỷ phiếu: check-in về REVERTED, ghế nhả ra và (tự động mời đang bật) người đang chờ vào ghế ngay.
-        // Khác Node: Node để ghế trống đến lần thay đổi hàng đợi sau.
+        // Người ở chỗ 1 huỷ phiếu: check-in về REVERTED, chỗ nhả ra và (tự động mời đang bật) người đang chờ vào chỗ ngay.
+        // Khác Node: Node để chỗ trống đến lần thay đổi hàng đợi sau.
         staff.post("/api/staff/appointments/" + ids.get(0) + "/cancel", body("reason", "Bệnh nhân xin huỷ")).expectStatus(200);
         assertThat(checkinStatus(ids.get(0))).isEqualTo("REVERTED");
         var q = queueState(staff);
         assertThat(q.get("inRoomCount").intValue()).isEqualTo(5);
         assertThat(q.get("seats").get(0).get("appointmentId").stringValue()).isEqualTo(String.valueOf(ids.get(5)));
-        assertThat(q.get("waitingCount").intValue()).isZero();
+        assertThat(q.get("treatmentWaitingCount").intValue()).isZero();
 
-        // Người vừa vào ghế huỷ phiếu: rời phòng, không còn ai chờ nên ghế trống
+        // Người vừa vào chỗ huỷ phiếu: rời chỗ, không còn ai chờ nên chỗ trống
         staff.post("/api/staff/appointments/" + ids.get(5) + "/cancel", body("reason", "Đặt nhầm")).expectStatus(200);
         q = queueState(staff);
         assertThat(q.get("inRoomCount").intValue()).isEqualTo(4);
         assertThat(q.get("seats").get(0).get("empty").booleanValue()).isTrue();
 
-        // Ghế vừa nhả dùng lại được
+        // Chỗ vừa nhả dùng lại được
         long late = todayAppointment("Người đến muộn");
         staff.post("/api/staff/appointments/" + late + "/checkin", body()).expectStatus(200);
+        callIn(clinic(), late);
+        orderTreatment(clinic(), late);
         q = queueState(staff);
         assertThat(q.get("inRoomCount").intValue()).isEqualTo(5);
         assertThat(q.get("seats").get(0).get("appointmentId").stringValue()).isEqualTo(String.valueOf(late));
@@ -567,10 +594,11 @@ class QueueTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("[java] tự động mời mặc định bật, tắt rồi bật lại thì lấp ghế trống")
+    @DisplayName("[java] tự động mời mặc định bật, tắt rồi bật lại thì lấp chỗ điều trị trống; tiếp tân không đổi được")
     void javaTuDongMoi() {
         var staff = client().staff();
         assertThat(settings.get("queue.autoInvite", true, Boolean.class)).isTrue();
+        staff.put("/api/staff/queue/auto-invite", body("enabled", false)).expectStatus(403);
         autoInvite(staff, false);
         assertThat(queueState(staff).get("autoInvite").booleanValue()).isFalse();
         assertThat(settings.get("queue.autoInvite", true, Boolean.class)).isFalse();
@@ -578,17 +606,17 @@ class QueueTest extends IntegrationTest {
         checkInAll(staff, 2);
         var q = queueState(staff);
         assertThat(q.get("inRoomCount").intValue()).isZero();
-        assertThat(q.get("waitingCount").intValue()).isEqualTo(2);
+        assertThat(q.get("treatmentWaitingCount").intValue()).isEqualTo(2);
 
-        var after = staff.put("/api/staff/queue/auto-invite", body("enabled", true)).expectStatus(200).json();
+        var after = clinic().put("/api/staff/queue/auto-invite", body("enabled", true)).expectStatus(200).json();
         assertThat(after.get("autoInvite").booleanValue()).isTrue();
         assertThat(after.get("inRoomCount").intValue()).isEqualTo(2);
-        assertThat(after.get("waitingCount").intValue()).isZero();
+        assertThat(after.get("treatmentWaitingCount").intValue()).isZero();
 
-        var bad = staff.put("/api/staff/queue/auto-invite", body()).expectStatus(400).json();
+        var bad = clinic().put("/api/staff/queue/auto-invite", body()).expectStatus(400).json();
         assertThat(bad.get("error").get("code").stringValue()).isEqualTo("VALIDATION");
         assertThat(bad.get("error").get("fields").get("enabled").stringValue()).isEqualTo("Required");
-        staff.put("/api/staff/queue/auto-invite", body("enabled", "yes")).expectStatus(400);
+        clinic().put("/api/staff/queue/auto-invite", body("enabled", "yes")).expectStatus(400);
     }
 
     @Test

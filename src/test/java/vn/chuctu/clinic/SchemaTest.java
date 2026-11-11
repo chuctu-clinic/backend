@@ -76,23 +76,23 @@ class SchemaTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("[java] chặn hai người cùng một ghế")
+    @DisplayName("[java] chặn hai người cùng một chỗ")
     void chan_hai_nguoi_cung_mot_ghe() {
         checkin(appointment(), "2026-11-02", "IN_ROOM", 1);
         assertThrows(DuplicateKeyException.class, () -> checkin(appointment(), "2026-11-02", "IN_ROOM", 1));
-        // Ghế khác cùng ngày, hoặc cùng ghế ngày khác, đều được
+        // Chỗ khác cùng ngày, hoặc cùng chỗ ngày khác, đều được
         assertDoesNotThrow(() -> checkin(appointment(), "2026-11-02", "IN_ROOM", 2));
         assertDoesNotThrow(() -> checkin(appointment(), "2026-11-03", "IN_ROOM", 1));
     }
 
     @Test
-    @DisplayName("[java] cho phép ghế trùng khi không trong phòng")
+    @DisplayName("[java] cho phép chỗ trùng khi không trong phòng")
     void cho_phep_ghe_trung_khi_khong_trong_phong() {
         assertDoesNotThrow(() -> {
             checkin(appointment(), "2026-11-02", "WAITING", null);
             checkin(appointment(), "2026-11-02", "WAITING", null);
             checkin(appointment(), "2026-11-02", "WAITING", null);
-            // Ghế 1 đang có người trong phòng; ghế ghi trên dòng đã xong hay đã hoàn tác không tính là chiếm ghế
+            // Chỗ 1 đang có người trong phòng; chỗ ghi trên dòng đã xong hay đã hoàn tác không tính là chiếm chỗ
             checkin(appointment(), "2026-11-02", "IN_ROOM", 1);
             checkin(appointment(), "2026-11-02", "COMPLETED", 1);
             checkin(appointment(), "2026-11-02", "REVERTED", 1);
