@@ -39,12 +39,14 @@ class MedicalRecordsTest extends IntegrationTest {
     private Visit completedVisit(TestClient staff, String patientId, Map<String, Object> data) {
         long appt = todayAppointment(patientId);
         staff.post("/api/staff/appointments/" + appt + "/checkin", body()).expectStatus(200);
+        callIn(staff, appt);
         var res = staff.post("/api/staff/appointments/" + appt + "/record", data).expectStatus(201);
         return new Visit(appt, res.json().get("record"));
     }
 
     private Visit completedVisit(TestClient staff, String patientId) {
-        return completedVisit(staff, patientId, body("diagnosis", "Đau lưng", "doctorName", "BS An"));
+        return completedVisit(staff, patientId, body("diagnosis", "Đau lưng", "doctorName", "BS An", "advice", "Tập vươn vai mỗi sáng",
+                "treatmentNotes", body("physio", "Chiếu đèn hồng ngoại")));
     }
 
     // ---------- Xem kết quả khám (BR.20, BR.21) ----------
@@ -61,12 +63,14 @@ class MedicalRecordsTest extends IntegrationTest {
     @Test
     @DisplayName("chủ tài khoản xem được kết quả, không thấy người ghi và lịch sử sửa nội bộ")
     void chuTaiKhoanXemKetQua() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var user = client().registerUser();
         Visit visit = completedVisit(staff, user.selfPatientId());
 
         JsonNode record = user.get("/api/me/appointments/" + visit.appointmentId() + "/result").expectStatus(200).json().get("record");
         assertThat(record.get("diagnosis").stringValue()).isEqualTo("Đau lưng");
+        assertThat(record.get("advice").stringValue()).isEqualTo("Tập vươn vai mỗi sáng");
+        assertThat(record.get("treatmentNotes").get("physio").stringValue()).isEqualTo("Chiếu đèn hồng ngoại");
         assertThat(record.has("editHistory")).isFalse();
         assertThat(record.has("recordedByName")).isFalse();
 
@@ -79,7 +83,7 @@ class MedicalRecordsTest extends IntegrationTest {
     @Test
     @DisplayName("tài khoản khác không xem được kết quả và lịch sử khám của người này")
     void taiKhoanKhacKhongXemDuoc() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var owner = client().registerUser("0917000001", "Chủ Hồ Sơ");
         var other = client().registerUser("0917000002", "Người Khác");
         String patientId = owner.selfPatientId();
@@ -93,7 +97,7 @@ class MedicalRecordsTest extends IntegrationTest {
     @Test
     @DisplayName("[java] người dùng không xem được kết quả của tài khoản khác")
     void javaNguoiDungKhongXemKetQuaTaiKhoanKhac() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var a = client().registerUser("0917000011", "Người A");
         var b = client().registerUser("0917000012", "Người B");
         Visit visitOfB = completedVisit(staff, b.selfPatientId(), body("diagnosis", "Bí mật của B"));
@@ -108,7 +112,7 @@ class MedicalRecordsTest extends IntegrationTest {
     @Test
     @DisplayName("lọc lịch sử theo từng hồ sơ trong tài khoản")
     void locLichSuTheoHoSo() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var user = client().registerUser();
         String selfId = user.selfPatientId();
         String relative = user.post("/api/me/patients",
@@ -128,7 +132,7 @@ class MedicalRecordsTest extends IntegrationTest {
     @Test
     @DisplayName("chỉ lập phiếu cho người đang trong phòng khám")
     void chiLapPhieuChoNguoiTrongPhong() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var user = client().registerUser();
         long appt = todayAppointment(user.selfPatientId());
         var res = staff.post("/api/staff/appointments/" + appt + "/record", body("diagnosis", "x")).expectStatus(409);
@@ -138,7 +142,7 @@ class MedicalRecordsTest extends IntegrationTest {
     @Test
     @DisplayName("hồ sơ bị khoá thì không lập phiếu mới và không sửa phiếu cũ")
     void hoSoBiKhoa() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var admin = client().staff("admin@chuctu.vn");
         var user = client().registerUser();
         String patientId = user.selfPatientId();
@@ -149,6 +153,7 @@ class MedicalRecordsTest extends IntegrationTest {
         admin.post("/api/admin/patients/" + patientId + "/unlock", body()).expectStatus(200);
         long appt = todayAppointment(patientId);
         staff.post("/api/staff/appointments/" + appt + "/checkin", body()).expectStatus(200);
+        callIn(staff, appt);
         admin.post("/api/admin/patients/" + patientId + "/lock", body()).expectStatus(200);
         staff.post("/api/staff/appointments/" + appt + "/record", body("diagnosis", "x")).expectStatus(403);
         // Bị chặn thì phiếu vẫn đang khám, không có bệnh án
@@ -159,7 +164,7 @@ class MedicalRecordsTest extends IntegrationTest {
     @Test
     @DisplayName("ghi lại nội dung đổi của ngày tái khám và ghi chú điều trị, sửa giống hệt thì không ghi")
     void ghiLaiNoiDungDoi() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var user = client().registerUser();
         String followUp = futureDate(7);
         Visit visit = completedVisit(staff, user.selfPatientId(),
@@ -192,28 +197,25 @@ class MedicalRecordsTest extends IntegrationTest {
     @Test
     @DisplayName("nhân viên xem phiếu theo mã phiếu kết quả và theo phiếu khám")
     void nhanVienXemPhieu() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var user = client().registerUser();
         Visit visit = completedVisit(staff, user.selfPatientId());
         String id = visit.record().get("id").stringValue();
 
-        var record = staff.get("/api/staff/records/" + id).expectStatus(200).json().get("record");
-        assertThat(record.get("diagnosis").stringValue()).isEqualTo("Đau lưng");
-        assertThat(record.get("recordedByName").stringValue()).isNotEmpty();
         var detail = staff.get("/api/staff/appointments/" + visit.appointmentId()).expectStatus(200).json();
         assertThat(detail.get("record").get("id").stringValue()).isEqualTo(id);
         assertThat(detail.get("record").get("diagnosis").stringValue()).isEqualTo("Đau lưng");
-        staff.get("/api/staff/records/999999999").expectStatus(404);
+        assertThat(detail.get("record").get("recordedByName").stringValue()).isNotEmpty();
     }
 
     @Test
     @DisplayName("người dùng thường không gọi được API phiếu kết quả nội bộ")
     void nguoiDungKhongGoiDuocApiNoiBo() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var user = client().registerUser();
         Visit visit = completedVisit(staff, user.selfPatientId());
         String id = visit.record().get("id").stringValue();
-        user.get("/api/staff/records/" + id).expectStatus(403);
+        user.get("/api/staff/appointments/" + visit.appointmentId()).expectStatus(403);
         user.put("/api/staff/records/" + id, body("diagnosis", "Tự sửa")).expectStatus(403);
     }
 
@@ -222,7 +224,7 @@ class MedicalRecordsTest extends IntegrationTest {
     @Test
     @DisplayName("[java] test ngày: visitDate và followUpDate dạng YYYY-MM-DD, dob dạng YYYY-MM-DDT00:00:00.000Z")
     void javaTestNgay() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var user = client().registerUser();
         String followUp = futureDate(10);
         Visit visit = completedVisit(staff, user.selfPatientId(),
@@ -246,9 +248,9 @@ class MedicalRecordsTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("[java] lưu phiếu: phiếu khám hoàn thành, check-in hoàn thành nhả ghế, người kế tiếp vào ghế đó")
+    @DisplayName("[java] lưu phiếu: phiếu khám hoàn thành, check-in hoàn thành nhả chỗ, người kế tiếp vào chỗ đó")
     void javaLuuPhieuHoanThanhVaNhaGhe() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var user = client().registerUser();
         Visit visit = completedVisit(staff, user.selfPatientId());
         assertThat(jdbc.queryForObject("SELECT status FROM appointments WHERE id = ?", String.class, visit.appointmentId()))
@@ -264,10 +266,11 @@ class MedicalRecordsTest extends IntegrationTest {
     @Test
     @DisplayName("[java] giờ ghi vào database là UTC đúng đồng hồ: updated_at của phiếu khám, completed_at, created_at của bệnh án")
     void javaGioGhiLaUtc() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var user = client().registerUser();
         long appt = todayAppointment(user.selfPatientId());
         staff.post("/api/staff/appointments/" + appt + "/checkin", body()).expectStatus(200);
+        callIn(staff, appt);
         Instant fixed = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).plusMillis(123);
         clock.set(fixed);
         staff.post("/api/staff/appointments/" + appt + "/record", body("diagnosis", "Đau vai")).expectStatus(201);
@@ -284,7 +287,7 @@ class MedicalRecordsTest extends IntegrationTest {
     @Test
     @DisplayName("[java] chủ tài khoản xem được kết quả khám của người thân, tài khoản khác thì 404")
     void javaXemKetQuaNguoiThan() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var owner = client().registerUser("0917000031", "Chủ Tài Khoản");
         var other = client().registerUser("0917000032", "Người Lạ");
         String relative = owner.post("/api/me/patients",
@@ -301,10 +304,11 @@ class MedicalRecordsTest extends IntegrationTest {
     @Test
     @DisplayName("[java] phiếu đã có bệnh án thì báo RECORD_EXISTS")
     void javaPhieuDaCoBenhAn() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var user = client().registerUser();
         long appt = todayAppointment(user.selfPatientId());
         staff.post("/api/staff/appointments/" + appt + "/checkin", body()).expectStatus(200);
+        callIn(staff, appt);
         Long patientId = jdbc.queryForObject("SELECT patient_id FROM appointments WHERE id = ?", Long.class, appt);
         Long staffId = jdbc.queryForObject("SELECT id FROM users WHERE role = 'RECEPTIONIST'", Long.class);
         jdbc.update("INSERT INTO medical_records (patient_id, appointment_id, visit_date, recorded_by, created_at, updated_at) "
@@ -317,7 +321,7 @@ class MedicalRecordsTest extends IntegrationTest {
     @Test
     @DisplayName("[java] chỉ sửa được trong 24 giờ: đúng 24 giờ còn sửa được, quá 1 mili giây thì 403")
     void javaBienCuaSoSua() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var user = client().registerUser();
         Visit visit = completedVisit(staff, user.selfPatientId());
         String id = visit.record().get("id").stringValue();
@@ -337,14 +341,14 @@ class MedicalRecordsTest extends IntegrationTest {
     @Test
     @DisplayName("[java] lịch sử sửa giữ đúng thứ tự đã lưu, ghi người sửa")
     void javaLichSuSuaDungThuTu() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var user = client().registerUser();
         Visit visit = completedVisit(staff, user.selfPatientId());
         String id = visit.record().get("id").stringValue();
         for (String d : new String[] {"Một", "Hai", "Ba", "Bốn"}) {
             staff.put("/api/staff/records/" + id, body("diagnosis", d)).expectStatus(200);
         }
-        JsonNode history = staff.get("/api/staff/records/" + id).expectStatus(200).json().get("record").get("editHistory");
+        JsonNode history = staff.get("/api/staff/appointments/" + visit.appointmentId()).expectStatus(200).json().get("record").get("editHistory");
         assertThat(history).hasSize(4);
         String[] expectedFrom = {"Đau lưng", "Một", "Hai", "Ba"};
         String[] expectedTo = {"Một", "Hai", "Ba", "Bốn"};
@@ -359,7 +363,7 @@ class MedicalRecordsTest extends IntegrationTest {
     @Test
     @DisplayName("[java] hồ sơ bệnh nhân của tiếp tân liệt kê đúng bệnh án của hồ sơ đó")
     void javaHoSoBenhNhanCoBenhAn() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var owner = client().registerUser("0917000021", "Người Có Bệnh Án");
         var other = client().registerUser("0917000022", "Người Khác Hẳn");
         String ownerPatient = owner.selfPatientId();
@@ -379,10 +383,11 @@ class MedicalRecordsTest extends IntegrationTest {
     @Test
     @DisplayName("[java] dữ liệu gửi lên không hợp lệ thì báo VALIDATION theo từng ô")
     void javaKiemTraDuLieu() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var user = client().registerUser();
         long appt = todayAppointment(user.selfPatientId());
         staff.post("/api/staff/appointments/" + appt + "/checkin", body()).expectStatus(200);
+        callIn(staff, appt);
         var res = staff.post("/api/staff/appointments/" + appt + "/record", body("pulse", "x".repeat(51), "visitDate", "2026-02-30",
                 "treatmentNotes", body("other", "y".repeat(2001)))).expectStatus(400);
         JsonNode fields = res.json().get("error").get("fields");

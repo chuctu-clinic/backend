@@ -3,7 +3,6 @@ package vn.chuctu.clinic.record;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -30,11 +29,6 @@ public class StaffRecordController {
     ResponseEntity<Map<String, Object>> create(@PathVariable long id, @RequestBody(required = false) JsonNode json) {
         var data = RecordForms.parse(json);
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("record", records.createRecord(currentUser.require(), id, data)));
-    }
-
-    @GetMapping("/records/{id}")
-    Map<String, Object> get(@PathVariable long id) {
-        return Map.of("record", records.getRecord(id));
     }
 
     @PutMapping("/records/{id}")

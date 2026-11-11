@@ -38,9 +38,9 @@ import vn.chuctu.clinic.record.RecordForms.RecordData;
 /**
  * Bệnh án, tức phiếu kết quả khám (services/medicalRecord.service.js).
  *
- * <p>Lập phiếu là một giao dịch: lưu bệnh án, đổi phiếu khám sang COMPLETED và hoàn thành check-in (nhả ghế) cùng thành công
- * hoặc cùng quay lui. Mời người kế tiếp vào ghế vừa trống chạy sau khi giao dịch đã commit, ngoài mọi giao dịch, vì mỗi lần thử
- * một ghế của hàng đợi là giao dịch riêng và không thấy dòng chưa commit.
+ * <p>Lập phiếu là một giao dịch: lưu bệnh án, đổi phiếu khám sang COMPLETED và hoàn thành check-in (nhả chỗ) cùng thành công
+ * hoặc cùng quay lui. Mời người kế tiếp vào chỗ vừa trống chạy sau khi giao dịch đã commit, ngoài mọi giao dịch, vì mỗi lần thử
+ * một chỗ của hàng đợi là giao dịch riêng và không thấy dòng chưa commit.
  *
  * <p>Khung giờ sửa 24 giờ tính theo {@link Clock} (chỗ Node dùng Date.now). Không gọi các hàm ghi từ trong một giao dịch khác (xem {@link Tx}).
  */
@@ -99,9 +99,11 @@ public class RecordService {
         Map<String, Object> notes = new LinkedHashMap<>();
         notes.put("acupuncture", r.getTreatmentAcupuncture());
         notes.put("acupressure", r.getTreatmentAcupressure());
+        notes.put("physio", r.getTreatmentPhysio());
         notes.put("other", r.getTreatmentOther());
         out.put("treatmentNotes", notes);
         out.put("medicalHistory", r.getMedicalHistory());
+        out.put("advice", r.getAdvice());
         out.put("followUpDate", r.getFollowUpDate() == null ? null : r.getFollowUpDate().toString());
         out.put("doctorName", r.getDoctorName());
         List<Map<String, Object>> editHistory = new ArrayList<>();
@@ -168,32 +170,48 @@ public class RecordService {
 
     // ---------- Lập và sửa ----------
 
-    /** Lập phiếu kết quả cho người đang trong phòng khám; phiếu chuyển Đã hoàn thành (UC.9.7, UC.10.4). */
+    /**
+     * Bác sĩ kết luận và lập phiếu kết quả; phiếu khám chuyển Đã hoàn thành (UC.9.7, UC.10.4). Chỉ khi bệnh nhân đang khám sơ bộ
+     * (không cần điều trị) hoặc đã điều trị xong và chờ kết luận, và chỉ bác sĩ đã gọi khám (hoặc Quản trị viên) mới lập được.
+     */
     public Map<String, Object> createRecord(User staff, long appointmentId, RecordData data) {
         Appointment appt = appointments.findById(appointmentId).orElseThrow(() -> Errors.notFound("Không tìm thấy phiếu khám."));
         if (!"IN_PROGRESS".equals(appt.getStatus())) {
-            throw Errors.conflict("Chỉ lập phiếu kết quả cho người đang trong phòng khám.", "NOT_IN_PROGRESS");
+            throw Errors.conflict("Chỉ lập phiếu kết quả cho người đang được khám.", "NOT_IN_PROGRESS");
         }
         Patient patient = patients.findById(appt.getPatientId()).orElseThrow(() -> Errors.notFound("Không tìm thấy hồ sơ bệnh nhân."));
         if (patient.isLocked()) throw Errors.forbidden("Hồ sơ đang bị khoá nên không ghi nhận lượt khám mới.");
         if (records.existsByAppointmentId(appt.getId())) throw recordExists();
 
-        Checkin checkin = checkins.findFirstByAppointmentIdAndStatus(appt.getId(), "IN_ROOM").orElse(null);
+        Checkin checkin = checkins.findFirstByAppointmentIdAndStatusIn(appt.getId(), QueueService.ACTIVE)
+                .orElseThrow(() -> Errors.conflict("Chỉ lập phiếu kết quả cho người đang được khám.", "NOT_IN_PROGRESS"));
+        if ("WAITING_TREATMENT".equals(checkin.getStatus()) || "IN_ROOM".equals(checkin.getStatus())) {
+            throw Errors.conflict("Bệnh nhân đang điều trị. Chờ kỹ thuật viên lưu báo cáo điều trị rồi mới kết luận.", "NOT_READY");
+        }
+        if (!"EXAMINING".equals(checkin.getStatus()) && !"WAITING_CONCLUSION".equals(checkin.getStatus())) {
+            throw Errors.conflict("Chỉ lập phiếu kết quả cho người đang được khám.", "NOT_IN_PROGRESS");
+        }
+        queue.assertOwnPatient(staff, checkin);
         Instant now = now();
         MedicalRecord record = new MedicalRecord();
         record.setPatientId(appt.getPatientId());
         record.setAppointmentId(appt.getId());
-        record.setCheckinId(checkin == null ? null : checkin.getId());
+        record.setCheckinId(checkin.getId());
         record.setVisitDate(data.visitDate().get() != null ? data.visitDate().get() : VnTime.today(now));
         record.setDiagnosis(data.diagnosis().get());
         record.setPulse(data.pulse().get());
         record.setBloodPressure(data.bloodPressure().get());
         record.setTreatmentAcupuncture(data.acupuncture().get());
         record.setTreatmentAcupressure(data.acupressure().get());
+        record.setTreatmentPhysio(data.physio().get());
         record.setTreatmentOther(data.other().get());
         record.setMedicalHistory(data.medicalHistory().get());
+        record.setAdvice(data.advice().get());
         record.setFollowUpDate(data.followUpDate().get());
-        record.setDoctorName(data.doctorName().get());
+        // Không ghi tên bác sĩ thì lấy tên bác sĩ đang lập phiếu
+        String doctorName = data.doctorName().get();
+        if (doctorName == null && "DOCTOR".equals(staff.getRole())) doctorName = staff.getFullName();
+        record.setDoctorName(doctorName);
         record.setRecordedBy(staff.getId());
 
         MedicalRecord saved;
@@ -202,8 +220,8 @@ public class RecordService {
                 // Thứ tự khoá cố định: phiếu khám, check-in, rồi mới đến bệnh án
                 int moved = jdbc.update("UPDATE appointments SET status = 'COMPLETED', updated_at = ? WHERE id = ? AND status = 'IN_PROGRESS'",
                         Tx.utc(now), appt.getId());
-                if (moved != 1) throw Errors.conflict("Chỉ lập phiếu kết quả cho người đang trong phòng khám.", "NOT_IN_PROGRESS");
-                if (checkin != null && !queue.markCheckinCompleted(checkin.getId(), now)) {
+                if (moved != 1) throw Errors.conflict("Chỉ lập phiếu kết quả cho người đang được khám.", "NOT_IN_PROGRESS");
+                if (!queue.markCheckinCompleted(checkin.getId(), now)) {
                     throw Errors.conflict("Phiếu khám vừa thay đổi trạng thái, vui lòng tải lại.", "STALE");
                 }
                 return records.saveAndFlush(record);
@@ -212,15 +230,7 @@ public class RecordService {
             if (records.existsByAppointmentId(appt.getId())) throw recordExists();
             throw e;
         }
-        // Giao dịch đã commit: ghế vừa trống nhận người kế tiếp (BR.30)
-        if (checkin != null) {
-            try {
-                queue.fillAfterCompletion(checkin.getVisitDate());
-            } catch (RuntimeException e) {
-                // Bệnh án đã lưu; lỗi lấp ghế không được làm yêu cầu báo thất bại. Lần check-in hoặc mời kế tiếp sẽ lấp lại.
-                log.warn("Không mời được người kế tiếp sau khi lưu bệnh án {}", saved.getId(), e);
-            }
-        }
+        // Chỗ điều trị đã được trả lúc kỹ thuật viên lưu báo cáo, nên kết luận không làm đổi chỗ
         return recordView(saved, appt, patient, List.of());
     }
 
@@ -246,6 +256,7 @@ public class RecordService {
             if (change(changes, "pulse", data.pulse(), r.getPulse())) r.setPulse(data.pulse().get());
             if (change(changes, "bloodPressure", data.bloodPressure(), r.getBloodPressure())) r.setBloodPressure(data.bloodPressure().get());
             if (change(changes, "medicalHistory", data.medicalHistory(), r.getMedicalHistory())) r.setMedicalHistory(data.medicalHistory().get());
+            if (change(changes, "advice", data.advice(), r.getAdvice())) r.setAdvice(data.advice().get());
             if (change(changes, "doctorName", data.doctorName(), r.getDoctorName())) r.setDoctorName(data.doctorName().get());
             if (data.followUpDate().isPresent()) {
                 LocalDate next = data.followUpDate().get();
@@ -261,6 +272,7 @@ public class RecordService {
             if (change(changes, "treatmentNotes.acupressure", data.acupressure(), r.getTreatmentAcupressure())) {
                 r.setTreatmentAcupressure(data.acupressure().get());
             }
+            if (change(changes, "treatmentNotes.physio", data.physio(), r.getTreatmentPhysio())) r.setTreatmentPhysio(data.physio().get());
             if (change(changes, "treatmentNotes.other", data.other(), r.getTreatmentOther())) r.setTreatmentOther(data.other().get());
 
             if (!changes.isEmpty()) {
@@ -294,12 +306,6 @@ public class RecordService {
     }
 
     // ---------- Xem (nhân viên) ----------
-
-    @Transactional(readOnly = true)
-    public Map<String, Object> getRecord(long recordId) {
-        MedicalRecord record = records.findById(recordId).orElseThrow(() -> Errors.notFound(NOT_FOUND));
-        return viewsFor(List.of(record)).get(0);
-    }
 
     /** Bệnh án của một phiếu khám, null nếu chưa có. */
     @Transactional(readOnly = true)

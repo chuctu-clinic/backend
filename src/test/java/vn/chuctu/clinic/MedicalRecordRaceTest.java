@@ -22,7 +22,7 @@ class MedicalRecordRaceTest extends IntegrationTest {
     @Test
     @DisplayName("[java] bệnh án của phiếu được lưu xen vào giữa thì báo RECORD_EXISTS và giao dịch quay lui hết")
     void javaKhoaDuyNhatBaoRecordExists() {
-        var staff = client().staff();
+        var staff = clinicStaff();
         var user = client().registerUser();
         long patientId = Long.parseLong(user.selfPatientId());
         Long staffId = jdbc.queryForObject("SELECT id FROM users WHERE role = 'RECEPTIONIST'", Long.class);
@@ -33,6 +33,7 @@ class MedicalRecordRaceTest extends IntegrationTest {
                 java.time.LocalDateTime.ofInstant(VnTime.slotInstant(date, "08:00"), java.time.ZoneOffset.UTC), staffId);
         long appt = jdbc.queryForObject("SELECT id FROM appointments WHERE ticket_code = 'CT-PK-R-1'", Long.class);
         staff.post("/api/staff/appointments/" + appt + "/checkin", body()).expectStatus(200);
+        callIn(staff, appt);
         assertThat(jdbc.queryForObject("SELECT status FROM appointments WHERE id = ?", String.class, appt)).isEqualTo("IN_PROGRESS");
 
         // Người kia đã lưu xong bệnh án của phiếu này
@@ -45,10 +46,9 @@ class MedicalRecordRaceTest extends IntegrationTest {
 
         var res = staff.post("/api/staff/appointments/" + appt + "/record", body("diagnosis", "Của mình")).expectStatus(409).json();
         assertThat(res.get("error").get("code").stringValue()).isEqualTo("RECORD_EXISTS");
-        // Giao dịch quay lui hết: phiếu vẫn đang khám, check-in vẫn trong phòng, bệnh án của người kia còn nguyên
+        // Giao dịch quay lui hết: phiếu vẫn đang khám, check-in vẫn đang khám sơ bộ, bệnh án của người kia còn nguyên
         assertThat(jdbc.queryForObject("SELECT status FROM appointments WHERE id = ?", String.class, appt)).isEqualTo("IN_PROGRESS");
-        assertThat(jdbc.queryForObject("SELECT status FROM checkins WHERE appointment_id = ?", String.class, appt)).isEqualTo("IN_ROOM");
-        assertThat(jdbc.queryForObject("SELECT seat_no FROM checkins WHERE appointment_id = ?", Integer.class, appt)).isNotNull();
+        assertThat(jdbc.queryForObject("SELECT status FROM checkins WHERE appointment_id = ?", String.class, appt)).isEqualTo("EXAMINING");
         assertThat(jdbc.queryForObject("SELECT diagnosis FROM medical_records WHERE appointment_id = ?", String.class, appt))
                 .isEqualTo("Của người kia");
     }

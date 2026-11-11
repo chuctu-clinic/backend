@@ -55,11 +55,17 @@ public class MedicalRecord {
     @Column(name = "treatment_acupressure", columnDefinition = "text")
     private String treatmentAcupressure;
 
+    @Column(name = "treatment_physio", columnDefinition = "text")
+    private String treatmentPhysio;
+
     @Column(name = "treatment_other", columnDefinition = "text")
     private String treatmentOther;
 
     @Column(name = "medical_history", columnDefinition = "text")
     private String medicalHistory;
+
+    @Column(name = "advice", columnDefinition = "text")
+    private String advice;
 
     @Column(name = "follow_up_date")
     private LocalDate followUpDate;
@@ -97,10 +103,14 @@ public class MedicalRecord {
     public void setTreatmentAcupuncture(String treatmentAcupuncture) { this.treatmentAcupuncture = treatmentAcupuncture; }
     public String getTreatmentAcupressure() { return treatmentAcupressure; }
     public void setTreatmentAcupressure(String treatmentAcupressure) { this.treatmentAcupressure = treatmentAcupressure; }
+    public String getTreatmentPhysio() { return treatmentPhysio; }
+    public void setTreatmentPhysio(String treatmentPhysio) { this.treatmentPhysio = treatmentPhysio; }
     public String getTreatmentOther() { return treatmentOther; }
     public void setTreatmentOther(String treatmentOther) { this.treatmentOther = treatmentOther; }
     public String getMedicalHistory() { return medicalHistory; }
     public void setMedicalHistory(String medicalHistory) { this.medicalHistory = medicalHistory; }
+    public String getAdvice() { return advice; }
+    public void setAdvice(String advice) { this.advice = advice; }
     public LocalDate getFollowUpDate() { return followUpDate; }
     public void setFollowUpDate(LocalDate followUpDate) { this.followUpDate = followUpDate; }
     public String getDoctorName() { return doctorName; }
