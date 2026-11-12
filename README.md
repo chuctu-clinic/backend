@@ -157,8 +157,9 @@ Biến để trống thì dùng giá trị mặc định. Biến môi trường 
 | `FIREBASE_PROJECT_ID`, `FIREBASE_API_KEY`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_APP_ID` | Cấu hình Web app Firebase |
 | `FIREBASE_AUTH_EMULATOR_HOST` | Ví dụ `127.0.0.1:9099` để thử bằng Firebase Emulator |
 | `FIREBASE_TEST_NUMBERS_ONLY` | `1`: chỉ dùng số thử, bỏ qua reCAPTCHA. Không có tác dụng ở production. |
-| `EMAIL_PROVIDER` | `console` (in mã ra log) hoặc `smtp` |
+| `EMAIL_PROVIDER` | `console` (in mã ra log), `smtp` hoặc `brevo` (API HTTPS) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | Bắt buộc khi `EMAIL_PROVIDER=smtp` |
+| `BREVO_API_KEY`, `MAIL_FROM` | Bắt buộc khi `EMAIL_PROVIDER=brevo` |
 | `EMAIL_DEV_CODE` | Mã cố định cho email khi phát triển, mặc định `123456` |
 
 ---
@@ -199,6 +200,18 @@ Trình duyệt tự gửi và xác nhận mã với Firebase. Server chỉ kiể
 > **Lưu ý:** `MAIL_FROM` phải chứa địa chỉ email: chỉ địa chỉ, hoặc dạng `Tên <địa chỉ>`. Nếu chỉ ghi tên, email sẽ không gửi được. Địa chỉ nên trùng `SMTP_USER`.
 
 Cả Firebase và Gmail đều đã được thử thật (ngày 03/11/2026).
+
+**Khi triển khai trên Railway:** gói Free/Trial/Hobby chặn kết nối SMTP ra ngoài, nên Gmail SMTP chỉ chạy được ở máy. Trên Railway dùng Brevo (gửi qua HTTPS, miễn phí 300 thư/ngày):
+
+1. Tạo tài khoản tại brevo.com, vào **Senders, Domains & Dedicated IPs → Senders**, thêm và xác minh địa chỉ gửi (có thể là địa chỉ Gmail).
+2. Vào **SMTP & API → API keys & MCP**, tạo API key loại Restricted với quyền **Transactional email: All** và **Account: Read**. Brevo tự huỷ key bỏ không 90 ngày, nên backend tự gọi Brevo mỗi 3 ngày để giữ key (cần quyền Account: Read). Nếu key hỏng, log có dòng `[Brevo] API key không dùng được`: tạo key mới và thay `BREVO_API_KEY`. Không bật chặn IP (Authorized IPs) vì IP của Railway thay đổi.
+3. Trong Railway (service backend → Variables) đặt:
+   ```
+   EMAIL_PROVIDER=brevo
+   BREVO_API_KEY=<API key vừa tạo>
+   MAIL_FROM=Phòng khám Chúc Từ <địa chỉ đã xác minh>
+   ```
+   Có thể xoá các biến `SMTP_*`.
 
 ---
 
