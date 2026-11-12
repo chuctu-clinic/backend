@@ -13,6 +13,7 @@ import vn.chuctu.clinic.common.Rules;
  * <ul>
  *   <li>console: in mã ra log (phát triển, kiểm thử). Khi production không gửi được gì nên báo lỗi rõ ràng.
  *   <li>smtp: gửi qua máy chủ SMTP (Gmail, Google Workspace, Brevo...), cấu hình SMTP_* và MAIL_FROM.
+ *   <li>brevo: gửi qua API HTTPS của Brevo, cấu hình BREVO_API_KEY và MAIL_FROM. Dùng khi nơi triển khai chặn SMTP.
  * </ul>
  */
 @Component
@@ -57,7 +58,7 @@ public class EmailGateway {
                     log.info("[EMAIL] {} → {}: {}", c == null ? purpose : c.subject(), email, code);
                 }
             }
-            case "smtp" -> {
+            case "smtp", "brevo" -> {
                 Content c = content(purpose);
                 String subject = c == null ? "Mã xác nhận — Phòng khám Chúc Từ" : c.subject();
                 String intro = c == null ? "" : c.intro();
@@ -66,7 +67,7 @@ public class EmailGateway {
                 try {
                     mailSender.send(email, config.mailFrom, subject, text, html(intro, code));
                 } catch (RuntimeException e) {
-                    log.error("[EMAIL] Gửi qua SMTP không được: {}", e.getMessage());
+                    log.error("[EMAIL] Gửi qua {} không được: {}", config.emailProvider, e.getMessage());
                     throw new ApiException(502, "EMAIL_FAILED",
                             "Chưa gửi được email. Cô chú thử lại sau ít phút hoặc liên hệ quản trị viên.", null);
                 }

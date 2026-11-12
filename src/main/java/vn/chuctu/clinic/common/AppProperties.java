@@ -38,10 +38,11 @@ public final class AppProperties {
     public final String jwtSecret;
     public final List<String> clientOrigin;
     public final String smsProvider;
-    /** console (in mã ra log) | smtp */
+    /** console (in mã ra log) | smtp | brevo (API HTTPS) */
     public final String emailProvider;
     public final Smtp smtp;
     public final String mailFrom;
+    public final String brevoApiKey;
     /** Mã mẫu cố định cho mã gửi qua email, chỉ dùng khi phát triển. */
     public final String emailDevCode;
     public final Firebase firebase;
@@ -69,6 +70,7 @@ public final class AppProperties {
         smtp = new Smtp(get("SMTP_HOST", ""), integer("SMTP_PORT", 587), get("SMTP_USER", ""),
                 get("SMTP_PASS", "").replaceAll("(?U)\\s+", ""));
         mailFrom = get("MAIL_FROM", "");
+        brevoApiKey = get("BREVO_API_KEY", "").trim();
         String devCode = get("EMAIL_DEV_CODE", "");
         emailDevCode = SIX_DIGITS.matcher(devCode).matches() ? devCode : "123456";
         firebase = new Firebase(get("FIREBASE_PROJECT_ID", ""), get("FIREBASE_API_KEY", ""),
@@ -85,8 +87,16 @@ public final class AppProperties {
     }
 
     private void validate() {
-        if (!List.of("console", "smtp").contains(emailProvider)) {
-            throw new IllegalStateException("EMAIL_PROVIDER phải là console hoặc smtp (đang là \"" + emailProvider + "\")");
+        if (!List.of("console", "smtp", "brevo").contains(emailProvider)) {
+            throw new IllegalStateException("EMAIL_PROVIDER phải là console, smtp hoặc brevo (đang là \"" + emailProvider + "\")");
+        }
+        if (emailProvider.equals("brevo")) {
+            List<String> missing = new ArrayList<>();
+            if (brevoApiKey.isEmpty()) missing.add("BREVO_API_KEY");
+            if (mailFrom.isEmpty()) missing.add("MAIL_FROM");
+            if (!missing.isEmpty()) {
+                throw new IllegalStateException("EMAIL_PROVIDER=brevo cần đặt " + String.join(", ", missing) + " trong .env");
+            }
         }
         if (emailProvider.equals("smtp")) {
             List<String> missing = new ArrayList<>();

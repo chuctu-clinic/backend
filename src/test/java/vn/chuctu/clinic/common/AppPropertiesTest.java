@@ -51,13 +51,17 @@ class AppPropertiesTest {
     }
 
     @Test
-    @DisplayName("[java] EMAIL_PROVIDER phải là console hoặc smtp, smtp thì cần đủ cấu hình")
+    @DisplayName("[java] EMAIL_PROVIDER phải là console, smtp hoặc brevo, smtp/brevo thì cần đủ cấu hình")
     void emailProvider() {
-        assertTrue(message(new MockEnvironment().withProperty("EMAIL_PROVIDER", "sendgrid")).contains("console hoặc smtp"));
+        assertTrue(message(new MockEnvironment().withProperty("EMAIL_PROVIDER", "sendgrid")).contains("console, smtp hoặc brevo"));
         String missing = message(new MockEnvironment().withProperty("EMAIL_PROVIDER", "smtp").withProperty("SMTP_HOST", "h"));
         assertTrue(missing.contains("SMTP_USER, SMTP_PASS, MAIL_FROM"), missing);
         new AppProperties(new MockEnvironment().withProperty("EMAIL_PROVIDER", "smtp").withProperty("SMTP_HOST", "h")
                 .withProperty("SMTP_USER", "u").withProperty("SMTP_PASS", "p").withProperty("MAIL_FROM", "f@x.vn"));
+        String brevo = message(new MockEnvironment().withProperty("EMAIL_PROVIDER", "brevo"));
+        assertTrue(brevo.contains("BREVO_API_KEY, MAIL_FROM"), brevo);
+        new AppProperties(new MockEnvironment().withProperty("EMAIL_PROVIDER", "brevo").withProperty("BREVO_API_KEY", "k")
+                .withProperty("MAIL_FROM", "f@x.vn"));
     }
 
     @Test

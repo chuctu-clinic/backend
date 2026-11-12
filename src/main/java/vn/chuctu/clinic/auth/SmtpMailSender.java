@@ -8,7 +8,6 @@ import jakarta.mail.internet.MimeMessage;
 import jakarta.mail.internet.MimeMultipart;
 import java.util.Properties;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
-import org.springframework.stereotype.Component;
 import vn.chuctu.clinic.common.AppProperties;
 
 /**
@@ -16,7 +15,6 @@ import vn.chuctu.clinic.common.AppProperties;
  * với EMAIL_PROVIDER=console không cần cấu hình SMTP. Cổng 465 bật SSL trực tiếp, cổng khác dùng STARTTLS.
  * Mật khẩu SMTP_PASS đã được AppProperties bỏ dấu cách.
  */
-@Component
 public class SmtpMailSender implements MailSender {
 
     private static final String TIMEOUT_MS = "20000";
