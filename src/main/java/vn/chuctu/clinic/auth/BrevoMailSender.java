@@ -21,6 +21,7 @@ import vn.chuctu.clinic.common.AppProperties;
 public class BrevoMailSender implements MailSender {
 
     static final URI ENDPOINT = URI.create("https://api.brevo.com/v3/smtp/email");
+    static final URI ACCOUNT = URI.create("https://api.brevo.com/v3/account");
     private static final Duration TIMEOUT = Duration.ofSeconds(20);
 
     private final AppProperties config;
@@ -50,6 +51,20 @@ public class BrevoMailSender implements MailSender {
         body.put("textContent", text);
         body.put("htmlContent", html);
         return mapper.writeValueAsString(body);
+    }
+
+    /**
+     * Gọi nhẹ GET /v3/account để key được tính là đang dùng: Brevo tự huỷ API key bỏ không 90 ngày, mà phòng khám có thể
+     * nhiều tháng không ai quên mật khẩu. Key cần quyền Account: Read. Ném lỗi nếu Brevo không nhận key.
+     */
+    public void keepAlive() {
+        HttpRequest request = HttpRequest.newBuilder(ACCOUNT)
+                .timeout(TIMEOUT)
+                .header("api-key", config.brevoApiKey)
+                .header("accept", "application/json")
+                .GET()
+                .build();
+        check(call(request));
     }
 
     private HttpResponse<String> call(HttpRequest request) {
