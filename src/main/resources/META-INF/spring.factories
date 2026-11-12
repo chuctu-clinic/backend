@@ -1,1 +1,3 @@
 org.springframework.context.ApplicationContextInitializer=vn.chuctu.clinic.seed.DemoDatabaseInitializer
+
+org.springframework.boot.env.PropertySourceLoader=vn.chuctu.clinic.common.DotEnvPropertySourceLoader

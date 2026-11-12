@@ -2,8 +2,8 @@ spring:
   application:
     name: clinic
   config:
-    # Đọc .env cạnh project (định dạng KEY=VALUE). Biến môi trường của hệ điều hành được ưu tiên hơn.
-    import: optional:file:.env[.properties]
+    # Đọc .env cạnh project (định dạng KEY=VALUE, UTF-8: DotEnvPropertySourceLoader). Biến môi trường của hệ điều hành được ưu tiên hơn.
+    import: optional:file:.env[.dotenv]
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
