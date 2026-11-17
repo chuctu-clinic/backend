@@ -161,6 +161,11 @@ public class PostService {
     @Transactional
     public Map<String, Object> updatePost(long id, PostData data) {
         Post post = posts.findById(id).orElseThrow(() -> Errors.notFound(NOT_FOUND));
+        // Trang thông tin cố định luôn hiện trên website: không ẩn, không chuyển về bản nháp (A6)
+        if (post.isPage() && data.status().isPresent() && !"PUBLISHED".equals(data.status().get())) {
+            throw Errors.badRequest("Đây là trang thông tin cố định của website, luôn hiển thị, không ẩn hoặc chuyển về bản nháp được.",
+                    Map.of("fields", Map.of("status", "Trang thông tin cố định luôn ở trạng thái Đã công khai.")), "BAD_REQUEST");
+        }
         if (data.title().isPresent()) post.setTitle(data.title().get());
         if (data.category().isPresent()) post.setCategory(data.category().get());
         if (data.summary().isPresent()) post.setSummary(data.summary().get());

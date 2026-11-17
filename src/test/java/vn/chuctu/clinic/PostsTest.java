@@ -395,6 +395,21 @@ class PostsTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("A6: không ẩn hay chuyển nháp được trang thông tin cố định, trang vẫn công khai")
+    void khongAnDuocTrangCoDinh() {
+        var admin = admin();
+        var page = client().get("/api/posts/lien-he").expectStatus(200).json().get("post");
+        for (String status : java.util.List.of("HIDDEN", "DRAFT")) {
+            var res = admin.put("/api/admin/posts/" + id(page), body("status", status)).expectStatus(400).json().get("error");
+            assertThat(res.get("fields").has("status")).isTrue();
+            client().get("/api/posts/lien-he").expectStatus(200);
+        }
+        // Sửa nội dung mà vẫn giữ Đã công khai thì được
+        admin.put("/api/admin/posts/" + id(page), body("title", "Liên hệ", "status", "PUBLISHED")).expectStatus(200);
+        assertThat(jdbc.queryForObject("SELECT status FROM posts WHERE slug = 'lien-he'", String.class)).isEqualTo("PUBLISHED");
+    }
+
+    @Test
     @DisplayName("không xoá được trang thông tin cố định")
     void khongXoaDuocTrangCoDinh() {
         var admin = admin();
