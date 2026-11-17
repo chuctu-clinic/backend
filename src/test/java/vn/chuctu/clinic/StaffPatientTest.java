@@ -252,4 +252,15 @@ class StaffPatientTest extends IntegrationTest {
         assertThat(res.get("total").intValue()).isEqualTo(1);
         assertThat(res.get("page").intValue()).isEqualTo(30000000);
     }
+    @Test
+    @DisplayName("A19: Bác sĩ xem được danh sách hồ sơ bệnh nhân nhưng không thêm được; kỹ thuật viên vẫn 403")
+    void bacSiXemDanhSachBenhNhan() {
+        client().staff().post("/api/staff/patients", body("fullName", "Bệnh Nhân Xem", "birthYear", 1960, "phone", "0915777001"))
+                .expectStatus(201);
+        var doctor = loginAs(createUser("DOCTOR"));
+        var list = doctor.get("/api/staff/patients?q=0915777001").expectStatus(200).json();
+        assertThat(list.get("items").size()).isEqualTo(1);
+        doctor.post("/api/staff/patients", body("fullName", "Bác Sĩ Thêm", "birthYear", 1960, "phone", "0915777002")).expectStatus(403);
+        loginAs(createUser("TECHNICIAN")).get("/api/staff/patients").expectStatus(403);
+    }
 }
