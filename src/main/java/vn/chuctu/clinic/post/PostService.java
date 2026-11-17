@@ -114,7 +114,10 @@ public class PostService {
         }
     }
 
-    /** Trang thông tin cố định không hiện trong danh sách quản trị: website chỉ có 4 danh mục bài viết. */
+    /**
+     * Danh sách bài viết chỉ có 4 danh mục như website, không tính trang thông tin cố định. Các trang cố định trả riêng ở
+     * "pages" (không lọc, không phân trang) để Admin có đường vào sửa.
+     */
     public Map<String, Object> adminList(String status, String category, String q, Paging paging) {
         String st = status != null && STATUSES.contains(status) ? status : null;
         String cat = category != null && !category.equals("TRANG") && Post.CATEGORY_LABELS.containsKey(category) ? category : null;
@@ -127,6 +130,7 @@ public class PostService {
         out.put("items", items.stream().map(p -> postView(p, false)).toList());
         out.put("total", posts.adminCount(st, cat, pattern));
         out.put("statusCounts", counts);
+        out.put("pages", posts.findByCategoryOrderByIdAsc("TRANG").stream().map(p -> postView(p, false)).toList());
         return out;
     }
 
@@ -157,6 +161,11 @@ public class PostService {
     @Transactional
     public Map<String, Object> updatePost(long id, PostData data) {
         Post post = posts.findById(id).orElseThrow(() -> Errors.notFound(NOT_FOUND));
+        // Trang thông tin cố định luôn hiện trên website: không ẩn, không chuyển về bản nháp (A6)
+        if (post.isPage() && data.status().isPresent() && !"PUBLISHED".equals(data.status().get())) {
+            throw Errors.badRequest("Đây là trang thông tin cố định của website, luôn hiển thị, không ẩn hoặc chuyển về bản nháp được.",
+                    Map.of("fields", Map.of("status", "Trang thông tin cố định luôn ở trạng thái Đã công khai.")), "BAD_REQUEST");
+        }
         if (data.title().isPresent()) post.setTitle(data.title().get());
         if (data.category().isPresent()) post.setCategory(data.category().get());
         if (data.summary().isPresent()) post.setSummary(data.summary().get());

@@ -19,16 +19,30 @@ import vn.chuctu.clinic.post.UploadService;
 class UploadTest extends IntegrationTest {
 
     private static final int MAX = 3 * 1024 * 1024;
-    private static final String TOO_BIG_BODY = "{\"error\":{\"code\":\"SERVER_ERROR\",\"message\":\"Hệ thống đang bận, cô chú vui lòng thử lại sau.\"}}";
+    private static final String TOO_BIG_BODY =
+            "{\"error\":{\"code\":\"PAYLOAD_TOO_LARGE\",\"message\":\"Ảnh quá lớn, vui lòng chọn ảnh tối đa 3 MB.\",\"maxBytes\":3145728}}";
     private static final String BAD_TYPE_BODY = "{\"error\":{\"code\":\"BAD_REQUEST\",\"message\":\"Chỉ nhận ảnh JPG, PNG, WEBP hoặc GIF, tối đa 3 MB.\"}}";
 
     private TestClient admin() {
         return client().staff("admin@chuctu.vn");
     }
 
+    /** Ảnh PNG giả: chữ ký PNG ở đầu rồi byte ngẫu nhiên. */
     private static byte[] bytes(int size) {
+        return image("image/png", size);
+    }
+
+    /** Byte ngẫu nhiên mở đầu bằng chữ ký đúng của loại ảnh, để qua được bước kiểm nội dung tệp. */
+    private static byte[] image(String type, int size) {
         byte[] data = new byte[size];
         new Random(size).nextBytes(data);
+        byte[] head = switch (type) {
+            case "image/jpeg" -> new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
+            case "image/gif" -> "GIF89a".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+            case "image/webp" -> "RIFF0000WEBP".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+            default -> new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+        };
+        if (size >= head.length) System.arraycopy(head, 0, data, 0, head.length);
         return data;
     }
 
@@ -66,7 +80,7 @@ class UploadTest extends IntegrationTest {
     void anhDuoi3MbLuuVaDocLaiDungByte() {
         var admin = admin();
         for (String type : List.of("image/jpeg", "image/png", "image/webp", "image/gif")) {
-            byte[] data = bytes(200_000);
+            byte[] data = image(type, 200_000);
             var res = admin.sendBytes("POST", "/api/admin/uploads", data, type).expectStatus(201);
             String url = res.json().get("url").stringValue();
             assertThat(url).isEqualTo("/api/uploads/" + res.json().get("id").stringValue());
@@ -97,20 +111,20 @@ class UploadTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("[java] ảnh trên 3 MB trả 500 SERVER_ERROR như Node, có hay không có Content-Length, và không lưu gì")
-    void anhTren3MbTraLoiNhuNode() {
+    @DisplayName("A7: ảnh trên 3 MB trả 413 PAYLOAD_TOO_LARGE kèm giới hạn 3 MB, có hay không có Content-Length, và không lưu gì")
+    void anhTren3MbTra413() {
         var admin = admin();
         var sized = admin.sendBytes("POST", "/api/admin/uploads", bytes(MAX + 1), "image/png");
-        assertThat(sized.status()).isEqualTo(500);
+        assertThat(sized.status()).isEqualTo(413);
         assertThat(sized.text()).isEqualTo(TOO_BIG_BODY);
 
-        var big = admin.sendBytes("POST", "/api/admin/uploads", bytes(4 * 1024 * 1024), "image/jpeg; charset=x");
-        assertThat(big.status()).isEqualTo(500);
+        var big = admin.sendBytes("POST", "/api/admin/uploads", image("image/jpeg", 4 * 1024 * 1024), "image/jpeg; charset=x");
+        assertThat(big.status()).isEqualTo(413);
         assertThat(big.text()).isEqualTo(TOO_BIG_BODY);
 
         // Không có Content-Length (chunked): không thể biết trước, server phải tự chặn
         var chunked = admin.sendChunked("POST", "/api/admin/uploads", generated(MAX + 1, new AtomicLong()), "image/png");
-        assertThat(chunked.status()).isEqualTo(500);
+        assertThat(chunked.status()).isEqualTo(413);
         assertThat(chunked.text()).isEqualTo(TOO_BIG_BODY);
         assertThat(uploads()).isZero();
     }
@@ -120,7 +134,7 @@ class UploadTest extends IntegrationTest {
     void khongDocVoHanVaoBoNho() throws IOException {
         AtomicLong served = new AtomicLong();
         assertThatThrownBy(() -> UploadService.readLimited(generated(Long.MAX_VALUE / 2, served)))
-                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status()).isEqualTo(500));
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status()).isEqualTo(413));
         assertThat(served.get()).isLessThanOrEqualTo(MAX + 1L);
 
         served.set(0);
@@ -147,6 +161,14 @@ class UploadTest extends IntegrationTest {
         var bigText = admin.sendBytes("POST", "/api/admin/uploads", bytes(4 * 1024 * 1024), "text/plain");
         assertThat(bigText.status()).isEqualTo(400);
         assertThat(bigText.text()).isEqualTo(BAD_TYPE_BODY);
+        // A7: nội dung không khớp loại ảnh đã khai (PDF gửi kèm image/jpeg, PNG khai là GIF) bị từ chối
+        byte[] pdf = "%PDF-1.4 obj".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        for (String type : List.of("image/jpeg", "image/png", "image/webp", "image/gif")) {
+            var fake = admin.sendBytes("POST", "/api/admin/uploads", pdf, type);
+            assertThat(fake.status()).as(type).isEqualTo(400);
+            assertThat(fake.text()).as(type).isEqualTo(BAD_TYPE_BODY);
+        }
+        assertThat(admin.sendBytes("POST", "/api/admin/uploads", image("image/png", 100), "image/gif").status()).isEqualTo(400);
         // Gửi JSON tới đường dẫn tải ảnh cũng là 400 (body {} không phải ảnh)
         admin.post("/api/admin/uploads", body("a", 1)).expectStatus(400);
         assertThat(uploads()).isZero();

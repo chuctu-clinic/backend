@@ -409,7 +409,7 @@ class ProfilesTest extends IntegrationTest {
         assertThat(ok.get("birthYear").intValue()).isEqualTo(1950);
         assertThat(ok.get("dob").isNull()).isTrue();
         assertThat(fields(user.post("/api/me/patients", with(base, "birthYear", "abc")).expectStatus(400)).get("birthYear").stringValue())
-                .isEqualTo("Vui lòng chọn năm sinh.");
+                .isEqualTo("Vui lòng nhập năm sinh.");
         assertThat(fields(user.post("/api/me/patients", with(base, "birthYear", 1800)).expectStatus(400)).get("birthYear").stringValue())
                 .isEqualTo("Năm sinh chưa đúng.");
         assertThat(fields(user.post("/api/me/patients", with(base, "birthYear", 1950.5)).expectStatus(400)).get("birthYear").stringValue())

@@ -145,6 +145,31 @@ class PostsTest extends IntegrationTest {
         client().get("/api/posts/gioi-thieu").expectStatus(200);
     }
 
+    @Test
+    @DisplayName("A5: danh sách quản trị trả riêng 4 trang thông tin cố định để Admin mở sửa, lưu được không cần ảnh thu nhỏ")
+    void traRiengTrangCoDinh() {
+        var admin = admin();
+        var list = admin.get("/api/admin/posts?status=DRAFT&q=khong-co").expectStatus(200).json();
+        assertThat(list.get("total").intValue()).isZero();
+        JsonNode pages = list.get("pages");
+        assertThat(pages.size()).isEqualTo(4);
+        java.util.List<String> slugs = new java.util.ArrayList<>();
+        for (JsonNode p : pages) {
+            assertThat(p.get("category").stringValue()).isEqualTo("TRANG");
+            assertThat(p.has("content")).isFalse();
+            slugs.add(p.get("slug").stringValue());
+        }
+        assertThat(slugs).containsExactlyInAnyOrder("gioi-thieu", "dich-vu", "huong-dan", "lien-he");
+
+        // Trang cố định không có ảnh thu nhỏ vẫn lưu được khi đang công khai
+        JsonNode about = pages.get(slugs.indexOf("gioi-thieu"));
+        var saved = admin.put("/api/admin/posts/" + id(about), body("summary", "Mô tả mới", "thumbnailUrl", null, "status", "PUBLISHED"))
+                .expectStatus(200).json().get("post");
+        assertThat(saved.get("summary").stringValue()).isEqualTo("Mô tả mới");
+        assertThat(client().get("/api/posts/gioi-thieu").expectStatus(200).json().get("post").get("summary").stringValue())
+                .isEqualTo("Mô tả mới");
+    }
+
     // ---------- Thứ tự và phân trang ở trang quản trị ----------
 
     private List<String> titles(TestClient admin, String qs) {
@@ -367,6 +392,21 @@ class PostsTest extends IntegrationTest {
         client().get("/api/posts/" + id(post)).expectStatus(404);
         admin.get("/api/admin/posts/" + id(post)).expectStatus(404);
         admin.delete("/api/admin/posts/" + id(post)).expectStatus(404);
+    }
+
+    @Test
+    @DisplayName("A6: không ẩn hay chuyển nháp được trang thông tin cố định, trang vẫn công khai")
+    void khongAnDuocTrangCoDinh() {
+        var admin = admin();
+        var page = client().get("/api/posts/lien-he").expectStatus(200).json().get("post");
+        for (String status : java.util.List.of("HIDDEN", "DRAFT")) {
+            var res = admin.put("/api/admin/posts/" + id(page), body("status", status)).expectStatus(400).json().get("error");
+            assertThat(res.get("fields").has("status")).isTrue();
+            client().get("/api/posts/lien-he").expectStatus(200);
+        }
+        // Sửa nội dung mà vẫn giữ Đã công khai thì được
+        admin.put("/api/admin/posts/" + id(page), body("title", "Liên hệ", "status", "PUBLISHED")).expectStatus(200);
+        assertThat(jdbc.queryForObject("SELECT status FROM posts WHERE slug = 'lien-he'", String.class)).isEqualTo("PUBLISHED");
     }
 
     @Test

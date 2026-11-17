@@ -40,7 +40,7 @@ public class DashboardService {
         Map<String, Long> byStatus = countBy("SELECT status, COUNT(*) FROM appointments WHERE slot_date = ? GROUP BY status ORDER BY status", date);
         long total = byStatus.values().stream().mapToLong(Long::longValue).sum();
         long patients = jdbc.queryForObject("SELECT COUNT(*) FROM patients", Long.class);
-        Map<String, Long> postCounts = countBy("SELECT status, COUNT(*) FROM posts GROUP BY status");
+        Map<String, Long> postCounts = countBy("SELECT status, COUNT(*) FROM posts WHERE category <> 'TRANG' GROUP BY status");
         Map<String, Long> accounts = countBy("SELECT role, COUNT(*) FROM users GROUP BY role ORDER BY role");
         Map<String, Object> state = queue.queueState(date, now);
 

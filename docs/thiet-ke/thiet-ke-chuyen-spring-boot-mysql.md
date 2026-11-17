@@ -134,7 +134,7 @@ SELECT LAST_INSERT_ID();
 - Thao tác nhiều bước trong Node đang tự bù trừ khi lỗi (đặt lịch, đổi giờ, check-in). Bản Java dùng `@Transactional` thay cho code bù trừ, kết quả nhìn từ ngoài phải như cũ.
 - Mời vào ghế: mỗi lần thử ghế chạy trong transaction riêng hoặc bằng JDBC, vì lỗi trùng khoá làm hỏng session Hibernate. Trùng ghế thì thử ghế kế tiếp, tối đa 5 lần như `seatOne`.
 - Đặt lịch thử lại khi gặp deadlock MySQL (lỗi 1213), tối đa 3 lần, để người dùng không nhận lỗi 500.
-- Kiểm tra "đã có phiếu trong ngày" (`ALREADY_BOOKED`) hiện không được bảo vệ khi đặt đồng thời. Giữ nguyên hành vi đó.
+- Kiểm tra "đã có phiếu trong ngày" (`ALREADY_BOOKED`) khoá dòng hồ sơ (`SELECT … FOR UPDATE`) trước khi kiểm tra, nên các yêu cầu đặt đồng thời cho cùng hồ sơ xếp hàng: một yêu cầu thành công, các yêu cầu sau nhận 409 `ALREADY_BOOKED` (khác Node, sửa lỗi A1 của đợt rà soát 16/11/2026).
 
 ### Đăng nhập và bảo mật
 

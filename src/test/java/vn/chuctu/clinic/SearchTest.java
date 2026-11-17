@@ -13,7 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import vn.chuctu.clinic.patient.Patient;
 import vn.chuctu.clinic.patient.PatientRepository;
 
-/** Tìm hồ sơ bệnh nhân: không phân biệt hoa thường, phân biệt dấu, ký tự đặc biệt của LIKE là chữ thường. */
+/** Tìm hồ sơ bệnh nhân: không phân biệt hoa thường, không phân biệt dấu ở họ tên (A10), ký tự đặc biệt của LIKE là chữ thường. */
 class SearchTest extends IntegrationTest {
 
     @Autowired PatientRepository patients;
@@ -51,10 +51,12 @@ class SearchTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("[java] tìm phân biệt dấu")
-    void tim_phan_biet_dau() {
-        assertThat(search("Nguyen")).isEmpty();
+    @DisplayName("A10: tìm họ tên không phân biệt dấu")
+    void tim_khong_phan_biet_dau() {
+        assertThat(search("Nguyen")).containsExactly("Nguyễn Văn A");
+        assertThat(search("nguyen van")).containsExactly("Nguyễn Văn A");
         assertThat(search("Nguyễn")).containsExactly("Nguyễn Văn A");
+        assertThat(search("NGUYỄN VĂN")).containsExactly("Nguyễn Văn A");
     }
 
     @Test
@@ -73,5 +75,28 @@ class SearchTest extends IntegrationTest {
         assertThat(search("ct-bn-test-2")).containsExactly("Tran_B");
         assertThat(search("0916000003")).containsExactly("100% Khoe");
         assertThat(search("  0916000001  ")).containsExactly("Nguyễn Văn A");
+    }
+    @Test
+    @DisplayName("A10: Quản lý tài khoản tìm họ tên không dấu ra tên có dấu")
+    void timTaiKhoanKhongDau() {
+        client().registerUser("0912000555", "Nguyễn Thị Đào");
+        var admin = client().staff("admin@chuctu.vn");
+        List<String> names = new ArrayList<>();
+        admin.get("/api/admin/accounts?q=nguyen%20thi%20dao").expectStatus(200).json().get("items")
+                .forEach(item -> names.add(item.get("fullName").stringValue()));
+        assertThat(names).containsExactly("Nguyễn Thị Đào");
+    }
+
+    @Test
+    @DisplayName("A10: Lịch trong ngày tìm \"van\" ra phiếu của người tên có \"Văn\"")
+    void timLichTrongNgayKhongDau() {
+        String date = BookingTest.futureDate(2);
+        String patientId = String.valueOf(patients.findAll().stream().filter(p -> p.getFullName().equals("Nguyễn Văn A")).findFirst()
+                .orElseThrow().getId());
+        staff.post("/api/staff/appointments", TestClient.body("patientId", patientId, "serviceType", "CHAM_CUU", "slotDate", date,
+                "slotStart", "09:00")).expectStatus(201);
+        var items = staff.get("/api/staff/appointments?date=" + date + "&q=van").expectStatus(200).json().get("items");
+        assertThat(items.size()).isEqualTo(1);
+        assertThat(items.get(0).get("patient").get("fullName").stringValue()).isEqualTo("Nguyễn Văn A");
     }
 }

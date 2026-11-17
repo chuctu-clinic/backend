@@ -8,6 +8,7 @@ import java.util.Locale;
 import java.util.Map;
 import org.springframework.stereotype.Service;
 import vn.chuctu.clinic.account.User;
+import vn.chuctu.clinic.common.ApiException;
 import vn.chuctu.clinic.common.Errors;
 
 /** Ảnh cho bài viết (services/upload.service.js): gửi thẳng nội dung ảnh, tối đa 3 MB. */
@@ -39,20 +40,44 @@ public class UploadService {
         return TYPES.contains(mediaType(contentType).toLowerCase(Locale.ROOT));
     }
 
+    static final String TOO_LARGE = "Ảnh quá lớn, vui lòng chọn ảnh tối đa 3 MB.";
+    static final String BAD_TYPE = "Chỉ nhận ảnh JPG, PNG, WEBP hoặc GIF, tối đa 3 MB.";
+
     /**
      * Đọc tối đa {@value #MAX_BYTES} byte, không bao giờ nhiều hơn {@value #MAX_BYTES} + 1 byte vào bộ nhớ (Content-Length có
-     * thể vắng hoặc nói dối). Quá giới hạn thì báo 500 như body-parser của Node (lỗi 413 rơi vào errorHandler).
+     * thể vắng hoặc nói dối). Quá giới hạn thì báo 413 kèm giới hạn 3 MB (bản Node báo 500, sửa lỗi A7).
      */
     public static byte[] readLimited(InputStream in) throws IOException {
         byte[] data = in.readNBytes(MAX_BYTES + 1);
-        if (data.length > MAX_BYTES) throw Errors.serverError();
+        if (data.length > MAX_BYTES) {
+            throw new ApiException(413, "PAYLOAD_TOO_LARGE", TOO_LARGE, Map.of("maxBytes", MAX_BYTES));
+        }
         return data;
+    }
+
+    /** Nội dung tệp có đúng là loại ảnh đã khai không, theo chữ ký đầu tệp (không chỉ tin header Content-Type). */
+    static boolean matchesSignature(String type, byte[] d) {
+        return switch (type) {
+            case "image/jpeg" -> d.length >= 3 && (d[0] & 0xFF) == 0xFF && (d[1] & 0xFF) == 0xD8 && (d[2] & 0xFF) == 0xFF;
+            case "image/png" -> startsWith(d, 0, new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A});
+            case "image/gif" -> startsWith(d, 0, "GIF87a".getBytes(java.nio.charset.StandardCharsets.US_ASCII))
+                    || startsWith(d, 0, "GIF89a".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            case "image/webp" -> startsWith(d, 0, "RIFF".getBytes(java.nio.charset.StandardCharsets.US_ASCII))
+                    && startsWith(d, 8, "WEBP".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            default -> false;
+        };
+    }
+
+    private static boolean startsWith(byte[] data, int offset, byte[] prefix) {
+        if (data.length < offset + prefix.length) return false;
+        for (int i = 0; i < prefix.length; i++) if (data[offset + i] != prefix[i]) return false;
+        return true;
     }
 
     public Map<String, Object> saveImage(User admin, String contentType, byte[] data) {
         String type = mediaType(contentType);
-        if (!TYPES.contains(type) || data == null || data.length == 0) {
-            throw Errors.badRequest("Chỉ nhận ảnh JPG, PNG, WEBP hoặc GIF, tối đa 3 MB.");
+        if (!TYPES.contains(type) || data == null || data.length == 0 || !matchesSignature(type, data)) {
+            throw Errors.badRequest(BAD_TYPE);
         }
         Upload upload = new Upload();
         upload.setContentType(type);

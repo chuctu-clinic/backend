@@ -80,6 +80,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/staff/queue", "/api/staff/appointments/*", "/api/staff/records/*",
                                 "/api/staff/patients/*").access(roles(STAFF))
                         .requestMatchers("/api/staff/account/**").access(roles(STAFF))
+                        // Bác sĩ xem (không sửa, không thêm) danh sách hồ sơ bệnh nhân (A19, nhóm chốt Q4)
+                        .requestMatchers(HttpMethod.GET, "/api/staff/patients").access(roles("RECEPTIONIST", "DOCTOR", "ADMIN"))
                         // Còn lại của khu nội bộ (lịch trong ngày, check-in, đặt hộ, hồ sơ bệnh nhân): tiếp tân
                         .requestMatchers("/api/staff/**").access(roles("RECEPTIONIST", "ADMIN"))
                         .requestMatchers("/api/admin/**").access(roles("ADMIN"))
