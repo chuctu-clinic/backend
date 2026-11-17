@@ -97,7 +97,7 @@ class StaffPatientTest extends IntegrationTest {
         var res = staff.post("/api/staff/patients", body()).expectStatus(400);
         assertThat(fields(res).get("fullName").stringValue()).isEqualTo("Cô chú vui lòng nhập họ và tên.");
         assertThat(fields(res).get("phone").stringValue()).isEqualTo("Cô chú vui lòng nhập số điện thoại.");
-        assertThat(fields(res).get("birthYear").stringValue()).isEqualTo("Vui lòng chọn năm sinh.");
+        assertThat(fields(res).get("birthYear").stringValue()).isEqualTo("Vui lòng nhập năm sinh.");
 
         var created = staff.post("/api/staff/patients", body("fullName", "Trần Văn Quầy", "phone", "0916000010", "birthYear", 1948))
                 .expectStatus(201).json().get("patient");

@@ -160,19 +160,19 @@ public final class PatientForms {
     }
 
     /**
-     * z.coerce.number().int().min(1900).max(năm nay). Không đọc ra số (kể cả thiếu khi bắt buộc): "Vui lòng chọn năm sinh.".
+     * z.coerce.number().int().min(1900).max(năm nay). Không đọc ra số (kể cả thiếu khi bắt buộc): "Vui lòng nhập năm sinh.".
      * Null: nullable thì xoá, còn lại Number(null) = 0 nên báo năm sinh chưa đúng.
      */
     private static Opt<Integer> birthYear(Body b, LocalDate today, boolean required, boolean nullable) {
         JsonNode node = b.node("birthYear");
         if (node == null) {
-            if (required && b.isObject()) b.abort("birthYear", "Vui lòng chọn năm sinh.");
+            if (required && b.isObject()) b.abort("birthYear", "Vui lòng nhập năm sinh.");
             return Opt.absent();
         }
         if (node.isNull() && nullable) return Opt.of(null);
         double value = coerceNumber(node);
         if (Double.isNaN(value)) {
-            b.abort("birthYear", "Vui lòng chọn năm sinh.");
+            b.abort("birthYear", "Vui lòng nhập năm sinh.");
             return Opt.absent();
         }
         if (Double.isInfinite(value) || value != Math.floor(value) || value < 1900 || value > today.getYear()) {
