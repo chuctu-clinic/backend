@@ -94,6 +94,8 @@ class AdminAccountsTest extends IntegrationTest {
         var data = newAccount("role", "RECEPTIONIST", "email", "moi@chuctu.vn");
         var res = admin.post("/api/admin/accounts", data).expectStatus(400);
         assertThat(fields(res).has("tempPassword")).isTrue();
+        // A16: cùng mã PASSWORD_REQUIRED với đổi vai trò lên nội bộ khi thiếu mật khẩu tạm
+        assertThat(res.json().get("error").get("code").stringValue()).isEqualTo("PASSWORD_REQUIRED");
         var withShort = new LinkedHashMap<>(data);
         withShort.put("tempPassword", "ngan");
         admin.post("/api/admin/accounts", withShort).expectStatus(400);

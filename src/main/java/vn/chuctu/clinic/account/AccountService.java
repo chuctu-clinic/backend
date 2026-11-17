@@ -138,7 +138,8 @@ public class AccountService {
         boolean internal = Constants.STAFF_ROLES.contains(data.role());
         if (internal && !has(email)) throw emailRequired();
         if (internal && (data.tempPassword() == null || data.tempPassword().length() < Rules.MIN_PASSWORD_LENGTH)) {
-            throw Errors.badRequest(TEMP_PASSWORD_MIN, Map.of("fields", Map.of("tempPassword", TEMP_PASSWORD_MIN)), "BAD_REQUEST");
+            // Cùng mã với đổi vai trò lên nội bộ khi thiếu mật khẩu tạm (A16)
+            throw Errors.badRequest(TEMP_PASSWORD_MIN, Map.of("fields", Map.of("tempPassword", TEMP_PASSWORD_MIN)), "PASSWORD_REQUIRED");
         }
         String hash = internal ? auth.hashPassword(data.tempPassword()) : null;
         try {
