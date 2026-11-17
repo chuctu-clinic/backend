@@ -106,7 +106,8 @@ public class AppointmentService {
         String issue = slots.timeIssue(date, start, mode, clock.instant());
         if (issue != null) throw Errors.badRequest(issue, Map.of("fields", Map.of("slotStart", issue)), "SLOT_UNAVAILABLE");
 
-        // Kiểm tra này không được bảo vệ khi đặt đồng thời, giống Node (xem spec "Các thao tác đồng thời")
+        // Nơi gọi đã khoá dòng hồ sơ ngay đầu giao dịch (lockPatient), nên kiểm tra này thấy phiếu của yêu cầu đặt
+        // trước và hai yêu cầu đồng thời không cùng lọt qua (một phiếu còn hiệu lực mỗi ngày, README §10)
         if (appointments.existsByPatientIdAndSlotDateAndStatusIn(patient.getId(), date, Constants.ACTIVE_STATUSES)) {
             throw Errors.conflict(patient.getFullName() + " đã có phiếu khám trong ngày này. Cô chú xem lại mục Phiếu khám bệnh.",
                     "ALREADY_BOOKED");
@@ -129,9 +130,19 @@ public class AppointmentService {
         return appointments.saveAndFlush(appt);
     }
 
+    /**
+     * Khoá dòng hồ sơ tới hết giao dịch để các yêu cầu đặt lịch cho cùng hồ sơ xếp hàng. Phải là câu đầu tiên của giao
+     * dịch: MySQL (REPEATABLE READ) chụp ảnh dữ liệu ở lần đọc thường đầu tiên, nên khoá trước thì ảnh chụp có cả phiếu
+     * mà giao dịch trước vừa commit; đọc thường trước rồi mới khoá thì vẫn bỏ sót phiếu đó.
+     */
+    private void lockPatient(long patientId) {
+        jdbc.queryForList("SELECT id FROM patients WHERE id = ? FOR UPDATE", Long.class, patientId);
+    }
+
     /** Người dùng đặt lịch cho hồ sơ thuộc tài khoản của mình (UC.6.3). */
     public Appointment userBook(User user, BookingRequest req) {
         return tx.run(() -> {
+            lockPatient(req.patientId());
             Patient patient = patients.findByIdAndUserId(req.patientId(), user.getId())
                     .orElseThrow(() -> Errors.notFound("Không tìm thấy hồ sơ người đi khám."));
             if (patient.getRelationship() == null || patient.getRelationship().isEmpty()) {
@@ -156,6 +167,7 @@ public class AppointmentService {
     /** Tiếp tân đặt hộ tại quầy (UC.7.5). */
     public Appointment counterBook(User staff, BookingRequest req) {
         return tx.run(() -> {
+            lockPatient(req.patientId());
             Patient patient = patients.findById(req.patientId()).orElseThrow(() -> Errors.notFound("Không tìm thấy hồ sơ bệnh nhân."));
             return createAppointment(patient, req.serviceType(), req.slotDate(), req.slotStart(), "COUNTER", patient.getUserId(),
                     staff.getId(), null, SlotService.COUNTER);
@@ -249,6 +261,9 @@ public class AppointmentService {
     /** Đổi giờ tính như đặt mới vào khung mới: phiếu cũ huỷ, phiếu mới ghi rescheduledFromId (BR.26). Trả về phiếu mới. */
     public Appointment reschedule(User staff, long appointmentId, LocalDate date, String start) {
         return tx.run(() -> {
+            // Khoá phiếu rồi khoá hồ sơ trước mọi lần đọc thường (xem lockPatient): đổi sang ngày khác cũng là đặt mới
+            List<Long> owner = jdbc.queryForList("SELECT patient_id FROM appointments WHERE id = ? FOR UPDATE", Long.class, appointmentId);
+            if (!owner.isEmpty()) lockPatient(owner.get(0));
             Appointment old = appointments.findById(appointmentId).orElseThrow(() -> Errors.notFound("Không tìm thấy phiếu khám."));
             if (!"BOOKED".equals(old.getStatus())) throw Errors.conflict("Chỉ đổi giờ được phiếu chưa check-in.", "NOT_RESCHEDULABLE");
             if (old.getSlotDate().equals(date) && old.getSlotStart().equals(start)) {
