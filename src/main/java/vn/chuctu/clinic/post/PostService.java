@@ -114,7 +114,10 @@ public class PostService {
         }
     }
 
-    /** Trang thông tin cố định không hiện trong danh sách quản trị: website chỉ có 4 danh mục bài viết. */
+    /**
+     * Danh sách bài viết chỉ có 4 danh mục như website, không tính trang thông tin cố định. Các trang cố định trả riêng ở
+     * "pages" (không lọc, không phân trang) để Admin có đường vào sửa.
+     */
     public Map<String, Object> adminList(String status, String category, String q, Paging paging) {
         String st = status != null && STATUSES.contains(status) ? status : null;
         String cat = category != null && !category.equals("TRANG") && Post.CATEGORY_LABELS.containsKey(category) ? category : null;
@@ -127,6 +130,7 @@ public class PostService {
         out.put("items", items.stream().map(p -> postView(p, false)).toList());
         out.put("total", posts.adminCount(st, cat, pattern));
         out.put("statusCounts", counts);
+        out.put("pages", posts.findByCategoryOrderByIdAsc("TRANG").stream().map(p -> postView(p, false)).toList());
         return out;
     }
 

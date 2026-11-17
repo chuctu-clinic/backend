@@ -49,4 +49,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
     /** Bản nháp mới sửa gần nhất (tổng quan của Admin). */
     List<Post> findTop5ByStatusOrderByUpdatedAtDescIdDesc(String status);
+
+    /** Trang thông tin cố định (Giới thiệu, Dịch vụ, Hướng dẫn, Liên hệ) theo thứ tự tạo. */
+    List<Post> findByCategoryOrderByIdAsc(String category);
 }
