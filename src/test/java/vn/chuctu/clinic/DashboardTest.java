@@ -59,6 +59,22 @@ class DashboardTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("A3: số bài viết ở Tổng quan không tính 4 trang thông tin cố định, khớp với Quản lý bài viết")
+    void demBaiVietKhongTinhTrangCoDinh() {
+        var admin = client().staff("admin@chuctu.vn");
+        int fixedPages = jdbc.queryForObject("SELECT COUNT(*) FROM posts WHERE category = 'TRANG' AND status = 'PUBLISHED'", Integer.class);
+        assertThat(fixedPages).as("seed có các trang thông tin cố định").isGreaterThan(0);
+        admin.post("/api/admin/posts", body("title", "Bài đã đăng", "summary", "Mô tả", "category", "TIN_TUC", "authorName", "BS",
+                "thumbnailUrl", "/api/uploads/1", "content", "<p>Nội dung</p>", "status", "PUBLISHED")).expectStatus(201);
+
+        JsonNode dashboard = admin.get("/api/admin/dashboard").expectStatus(200).json().get("posts");
+        JsonNode counts = admin.get("/api/admin/posts").expectStatus(200).json().get("statusCounts");
+        assertThat(dashboard.get("published").intValue()).isEqualTo(counts.get("PUBLISHED").intValue());
+        assertThat(dashboard.get("draft").intValue()).isEqualTo(counts.get("DRAFT").intValue());
+        assertThat(dashboard.get("hidden").intValue()).isEqualTo(counts.get("HIDDEN").intValue());
+    }
+
+    @Test
     @DisplayName("đếm bài viết theo trạng thái và liệt kê bản nháp, không kèm nội dung")
     void demBaiViet() {
         var admin = client().staff("admin@chuctu.vn");
@@ -102,9 +118,9 @@ class DashboardTest extends IntegrationTest {
         var admin = client().staff("admin@chuctu.vn");
         var staff = client().staff();
         for (int i = 0; i < 6; i++) staff.post("/api/staff/appointments/" + todayAppointment("BOOKED") + "/checkin", body()).expectStatus(200);
-        // Seed đã tạo 4 trang thông tin đã đăng, nên so với số trước khi thêm
+        // Seed đã tạo 4 trang thông tin đã đăng, nhưng Tổng quan không tính trang cố định (A3)
         int publishedBefore = admin.get("/api/admin/dashboard").expectStatus(200).json().get("posts").get("published").intValue();
-        assertThat(publishedBefore).isEqualTo(4);
+        assertThat(publishedBefore).isZero();
         for (String status : List.of("PUBLISHED", "DRAFT", "HIDDEN")) {
             admin.post("/api/admin/posts", body("title", "Bài " + status, "summary", "Mô tả", "category", "TIN_TUC", "authorName", "BS",
                     "content", "<p>x</p>", "status", status)).expectStatus(201);
