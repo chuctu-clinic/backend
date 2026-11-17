@@ -20,13 +20,16 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
 
     List<Appointment> findTop200ByPatientIdOrderBySlotDateDescSlotStartDescIdDesc(Long patientId);
 
-    /** Phiếu của tài khoản: do tài khoản đặt, hoặc thuộc một hồ sơ của tài khoản (BR.20). */
-    @Query("select a from Appointment a where a.id = :id and (a.userId = :userId "
-            + "or a.patientId in (select p.id from Patient p where p.userId = :userId))")
+    /**
+     * Phiếu của tài khoản: phiếu của hồ sơ còn thuộc tài khoản (BR.20), kể cả phiếu đặt tại quầy. Không xét người đặt
+     * (userId): hồ sơ đã tách khỏi tài khoản thì phiếu cũ của hồ sơ đó cũng thôi hiện (A9).
+     */
+    @Query("select a from Appointment a where a.id = :id "
+            + "and a.patientId in (select p.id from Patient p where p.userId = :userId)")
     Optional<Appointment> findOwned(@Param("id") Long id, @Param("userId") Long userId);
 
-    @Query("select a from Appointment a where a.status in :statuses and (a.userId = :userId "
-            + "or a.patientId in (select p.id from Patient p where p.userId = :userId)) "
+    @Query("select a from Appointment a where a.status in :statuses "
+            + "and a.patientId in (select p.id from Patient p where p.userId = :userId) "
             + "order by a.slotDate desc, a.slotStart desc, a.id desc limit 200")
     List<Appointment> listOwned(@Param("userId") Long userId, @Param("statuses") Collection<String> statuses);
 

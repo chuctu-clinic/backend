@@ -318,4 +318,25 @@ class UserAppointmentsTest extends IntegrationTest {
         assertThat(res.get("appointments").get(1).get("id").stringValue()).isEqualTo(first);
         assertThat(res.get("appointments").get(0).get("patient").get("id").stringValue()).isEqualTo(patientId);
     }
+    @Test
+    @DisplayName("A9: hồ sơ người thân đã tách khỏi tài khoản thì phiếu của hồ sơ đó không còn hiện, mở chi tiết trả 404 (BR.20)")
+    void phieuCuaHoSoDaTachKhongHien() {
+        var agent = client().registerUser();
+        String relative = agent.post("/api/me/patients", body("fullName", "Trương Thị Mỹ", "dob", "1950-03-04", "gender", "NU",
+                "relationship", "CHA_ME", "address", "Bình Thạnh")).expectStatus(201).json().get("patient").get("id").stringValue();
+        String selfTicket = book(agent, agent.selfPatientId(), futureDate(2)).expectStatus(201).json().get("appointment").get("id")
+                .stringValue();
+        String ticket = book(agent, relative, futureDate(3)).expectStatus(201).json().get("appointment").get("id").stringValue();
+        agent.post("/api/me/appointments/" + ticket + "/cancel", body()).expectStatus(200);
+        // Hồ sơ đã có phiếu nên chỉ được tách khỏi tài khoản, không xoá hẳn
+        assertThat(agent.delete("/api/me/patients/" + relative).expectStatus(200).json().get("detached").booleanValue()).isTrue();
+
+        List<String> ids = new ArrayList<>();
+        for (JsonNode a : agent.get("/api/me/appointments").expectStatus(200).json().get("items")) ids.add(a.get("id").stringValue());
+        assertThat(ids).containsExactly(selfTicket);
+        agent.get("/api/me/appointments/" + ticket).expectStatus(404);
+        agent.post("/api/me/appointments/" + ticket + "/cancel", body()).expectStatus(404);
+        // Phòng khám vẫn giữ phiếu
+        client().staff().get("/api/staff/appointments/" + ticket).expectStatus(200);
+    }
 }
